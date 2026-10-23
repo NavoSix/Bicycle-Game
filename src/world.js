@@ -539,6 +539,8 @@ export class World {
       if (i > 0 && Math.floor(p.d / MILE) !== Math.floor(pts[i - 1].d / MILE)) this.mileMarker(ctx, i, Math.floor(p.d / MILE));
       if (p.cross) this.crossing(ctx, p.cross);
       if (p.surf === 'bridge' && i + 1 < pts.length) this.bridgeRail(ctx, i);
+      this.trailLights(ctx, i, p);
+      this.bridgeTrees(ctx, i, p);
       // boardwalk railings
       if (p.surf === 'board' && p.y > 0.2 && i + 1 < pts.length) {
         const q = pts[i + 1];
@@ -603,6 +605,48 @@ export class World {
     s.position.set(q.x, 0, q.z);
     s.rotation.y = p.h + Math.PI;
     ctx.group.add(s);
+  }
+
+  // Low bollard lights, alternating sides, along paved trail. On bridges and
+  // boardwalks they sit on the deck at the rail.
+  trailLights(ctx, i, p) {
+    // not on streets (they have streetlights) or the Florida Trail and its narrow footbridges
+    const paved = p.surf !== 'road' && p.surf !== 'dirt' && p.type !== 'street' && p.type !== 'foottrail' && p.w > 2.8;
+    if (!paved || i % 9 !== 0) return;
+    const side = i % 18 === 0 ? 1 : -1;
+    const raised = (p.surf === 'board' || p.surf === 'bridge') && p.y > 0.2;
+    const lat = side * (p.w / 2 + (raised ? -0.25 : 0.45));
+    const q = ctx.at(i, lat);
+    const t = ctx.at(i, side * (p.w / 2 - 0.6));
+    if (raised) S.trailLight(ctx.b, q.x, q.z, t.x, t.z, p.y);
+    else if (ctx.ok(q.x, q.z, 0.2, i)) S.trailLight(ctx.b, q.x, q.z, t.x, t.z, p.y - 0.06);
+  }
+
+  // From the top of a pedestrian bridge you can see over the near scenery, so
+  // pack real trees in front of the painted walls for a couple hundred metres
+  // around it.
+  bridgeTrees(ctx, i, p) {
+    const near = ctx.path.crossings.find((c) => c.kind === 'highway' && Math.abs(c.i - i) < 110);
+    if (!near) return;
+    const { b, rng, path } = ctx;
+    const reg = path.regions.list[p.r];
+    const urban = p.type === 'town' || p.type === 'suburbTrail' || p.type === 'corridor';
+    for (const side of [-1, 1]) {
+      const ws = wallSpec(p, i, reg, side)[0];
+      const far = ws ? ws[1] - 2 : 45;
+      if (rng.chance(0.45)) {
+        ctx.place(i, side * rng.range(p.w / 2 + 4, far), 2.5, (x, z) => {
+          const r = rng.next();
+          if (r < 0.5) S.liveOak(b, rng, x, z, rng.range(1.2, 1.7));
+          else if (r < 0.7) S.slashPine(b, rng, x, z, rng.range(1.0, 1.3));
+          else if (r < 0.85 || !urban) S.cabbagePalm(b, rng, x, z, rng.range(1.0, 1.3));
+          else S.queenPalm(b, rng, x, z, 1.2);
+        });
+      }
+      // a second, taller band hugging the wall itself
+      if (rng.chance(0.3)) ctx.place(i, side * rng.range(far - 8, far), 3, (x, z) => S.liveOak(b, rng, x, z, rng.range(1.5, 1.9)));
+      if (rng.chance(0.2)) ctx.place(i, side * rng.range(p.w / 2 + 3, far), 1.5, (x, z) => S.shrub(b, rng, x, z, rng.range(1.2, 1.8), 0x3a5a28));
+    }
   }
 
   bridgeRail(ctx, i) {

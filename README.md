@@ -89,6 +89,8 @@ move your finger left or right to steer, and use two fingers to brake.
   into lines across the sky while thunderheads build on the horizon. After about
   two hours of riding, the sun goes down, the crickets start and your headlight
   comes on.
+- At dusk, knee-high bollard lights along the paved trail start to glow, each
+  throwing a dim pool of warm light across the pavement.
 - Bridge ramps are real climbs: you'll slow down going up and coast down the
   other side.
 - Other trail users come the other way: cyclists, joggers, and people walking

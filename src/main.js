@@ -8,6 +8,7 @@ import { Sound } from './audio.js';
 import { Input } from './input.js';
 import { textures } from './textures.js';
 import { lightWalls } from './walls.js';
+import { lightLamps } from './scenery.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -154,6 +155,8 @@ function frame() {
     sky.update(dt, hours, camera);
   }
   lightWalls(sky.pal, sky.night);
+  // trail lights come on at dusk, a little before full dark
+  lightLamps(THREE.MathUtils.smoothstep(-sky.sunDir.y, -0.07, 0.07));
   renderer.render(scene, camera);
 }
 

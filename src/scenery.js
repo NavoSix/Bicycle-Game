@@ -95,6 +95,9 @@ export function protos() {
   const glass = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 90, specular: 0x667788, flatShading: true });
   MAT.lam = lam;
   MAT.lam2 = lam2;
+  MAT.lampBand = new THREE.MeshBasicMaterial({ color: 0x3a3630 });
+  MAT.lampHalo = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+  MAT.lampPool = new THREE.MeshBasicMaterial({ color: 0x000000, map: poolTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, polygonOffset: true, polygonOffsetFactor: -4 });
   const up = (g) => g.translate(0, 0.5, 0);
   const moss = new THREE.ConeGeometry(0.16, 1, 4);
   moss.rotateX(Math.PI);
@@ -120,8 +123,49 @@ export function protos() {
     moss: { geo: moss, mat: lam2, shadow: false },
     oct: { geo: oct, mat: lam, shadow: true },
     wheel: { geo: new THREE.CylinderGeometry(1, 1, 1, 10).rotateZ(Math.PI / 2), mat: lam, shadow: true },
+    // trail lights: an emissive band, a faint halo, and a pool of light on the
+    // ground. All additive and driven by one brightness value, no real lights.
+    lampBand: { geo: up(new THREE.CylinderGeometry(1, 1, 1, 10)), mat: MAT.lampBand, shadow: false },
+    lampHalo: { geo: new THREE.IcosahedronGeometry(1, 2), mat: MAT.lampHalo, shadow: false },
+    lampPool: { geo: new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2), mat: MAT.lampPool, shadow: false },
   };
   return PROTOS;
+}
+
+function poolTexture() {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 128;
+  const g = cv.getContext('2d');
+  const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grd.addColorStop(0, 'rgba(255,255,255,1)');
+  grd.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+  grd.addColorStop(0.7, 'rgba(255,255,255,0.12)');
+  grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+const LAMP_WARM = new THREE.Color(0xffc477);
+const LAMP_OFF = new THREE.Color(0x3a3630);
+// 0 = daytime (unlit, dark lens), 1 = full night
+export function lightLamps(k) {
+  if (!MAT.lampBand) return;
+  MAT.lampBand.color.copy(LAMP_OFF).lerp(LAMP_WARM, k);
+  MAT.lampHalo.color.copy(LAMP_WARM).multiplyScalar(0.09 * k);
+  MAT.lampPool.color.copy(LAMP_WARM).multiplyScalar(0.9 * k);
+}
+
+// A knee-high bollard light at (x, z), throwing a pool of light toward (tx, tz).
+export function trailLight(b, x, z, tx, tz, y = 0) {
+  b.put('cyl', x, y, z, 0.085, 0.62, 0.085, 0, 0, 0, 0x2b2925);
+  b.put('lampBand', x, y + 0.62, z, 0.09, 0.12, 0.09, 0, 0, 0, 0xffffff);
+  b.put('cyl', x, y + 0.74, z, 0.11, 0.07, 0.11, 0, 0, 0, 0x2b2925);
+  b.put('lampHalo', x, y + 0.68, z, 0.2, 0.2, 0.2, 0, 0, 0, 0xffffff);
+  b.put('lampPool', x + (tx - x) * 0.55, y + 0.03, z + (tz - z) * 0.55, 2.8, 1, 2.8, 0, 0, 0, 0xffffff);
+  b.circle(x, z, 0.12);
 }
 
 // ---------------------------------------------------------------------------
