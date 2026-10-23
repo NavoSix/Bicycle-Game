@@ -5,11 +5,14 @@
 //   bottom right  pedal (hold) and brake (hold)
 //   above those   cruise on/off with its speed, and − / + to change it
 //   top right     bell and pause
+//   bottom centre whatever you can do right here: walk, ride, read, look
 //   anywhere else drag to look around
+// On foot, the steering slider becomes a move stick and the bike buttons hide.
 export class TouchControls {
   constructor(canvas, input) {
     this.input = input;
-    this.state = { steer: 0, pedal: 0, brake: 0, active: false };
+    this.state = { steer: 0, pedal: 0, brake: 0, moveX: 0, moveY: 0, active: false };
+    this.mode = 'ride';
     input.touchUI = this.state;
     const root = (this.root = document.createElement('div'));
     root.id = 'touchui';
@@ -22,6 +25,7 @@ export class TouchControls {
       </div>
       <button class="tc tbtn brake" data-hold="brake" aria-label="Brake">Brake</button>
       <button class="tc tbtn pedal" data-hold="pedal" aria-label="Pedal">Pedal</button>
+      <button class="tc tbtn act" data-ev="interact" aria-label="Action"></button>
       <div class="tc corner">
         <button class="tbtn small" data-ev="bell" aria-label="Bell">🔔</button>
         <button class="tbtn small" data-ev="pause" aria-label="Pause">❚❚</button>
@@ -29,6 +33,7 @@ export class TouchControls {
     document.body.appendChild(root);
     this.spd = root.querySelector('.spd');
     this.cruiseBtn = root.querySelector('.cruise');
+    this.actBtn = root.querySelector('.act');
 
     // show the controls the first time a finger touches the screen
     addEventListener(
@@ -73,7 +78,7 @@ export class TouchControls {
     // steering slider
     const pad = root.querySelector('.steer');
     const knob = root.querySelector('.knob');
-    let sid = null, sx = 0;
+    let sid = null, sx = 0, sy = 0;
     const range = () => pad.clientWidth / 2 - 30;
     pad.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -81,16 +86,17 @@ export class TouchControls {
       sid = e.pointerId;
       const r = pad.getBoundingClientRect();
       sx = r.left + r.width / 2;
-      this.moveSteer(e.clientX - sx, range(), knob);
+      sy = r.top + r.height / 2;
+      this.moveSteer(e.clientX - sx, e.clientY - sy, range(), knob);
       this.poke();
     });
     pad.addEventListener('pointermove', (e) => {
-      if (e.pointerId === sid) this.moveSteer(e.clientX - sx, range(), knob);
+      if (e.pointerId === sid) this.moveSteer(e.clientX - sx, e.clientY - sy, range(), knob);
     });
     const release = (e) => {
       if (e.pointerId !== sid) return;
       sid = null;
-      this.moveSteer(0, range(), knob);
+      this.moveSteer(0, 0, range(), knob);
     };
     pad.addEventListener('pointerup', release);
     pad.addEventListener('pointercancel', release);
@@ -115,10 +121,23 @@ export class TouchControls {
     this.lastPoke = 0;
   }
 
-  moveSteer(dx, range, knob) {
+  moveSteer(dx, dy, range, knob) {
+    if (this.mode === 'walk') {
+      // a little joystick: up walks forward, sideways sidesteps, far out runs
+      const r = 60;
+      const d = Math.hypot(dx, dy);
+      const k = d > r ? r / d : 1;
+      knob.style.transform = `translate(${dx * k}px, ${dy * k}px)`;
+      const run = d > r * 1.4 ? 1.5 : 1;
+      this.state.moveX = ((dx * k) / r) * run;
+      this.state.moveY = ((-dy * k) / r) * run;
+      this.state.steer = 0;
+      return;
+    }
     const c = Math.max(-range, Math.min(range, dx));
     knob.style.transform = `translateX(${c}px)`;
     this.state.steer = range > 0 ? c / range : 0;
+    this.state.moveX = this.state.moveY = 0;
   }
 
   enable() {
@@ -133,8 +152,17 @@ export class TouchControls {
   }
 
   // called every frame with what the cycle computer shows
-  update(visible, cruise, speedLabel) {
+  update(visible, cruise, speedLabel, mode = 'ride', action = '') {
     this.root.classList.toggle('show', visible && this.state.active);
+    if (mode !== this.mode) {
+      this.mode = mode;
+      this.root.classList.toggle('walk', mode === 'walk');
+      this.state.pedal = this.state.brake = this.state.steer = this.state.moveX = this.state.moveY = 0;
+      this.root.querySelector('.knob').style.transform = '';
+    }
+    if (this.actBtn.textContent !== action) this.actBtn.textContent = action;
+    this.actBtn.classList.toggle('hide', !action);
+    if (action) this.lastPoke = performance.now();
     this.cruiseBtn.classList.toggle('lit', cruise);
     if (this.spd.textContent !== speedLabel) this.spd.textContent = speedLabel;
     // fade back once you've let go of everything for a while

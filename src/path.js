@@ -1,5 +1,6 @@
 import { RNG, hash } from './rng.js';
 import { RegionPlan } from './regions.js';
+import { POI_KINDS, poiFor } from './poi.js';
 
 // The ride is one endless polyline sampled every STEP metres. Everything else
 // (scenery, traffic, the bike's height) is positioned relative to it.
@@ -62,6 +63,8 @@ export class Path {
     this.board = null;
     this.ev = null;
     this.nextEvent = 1800;
+    this.pois = [];
+    this.nextPoi = 1300;
     this.nextCross = 1500;
     this.straightFrom = 0;
     this.straightUntil = 60;
@@ -86,8 +89,31 @@ export class Path {
     const type = region.type;
     const cfg = CURVE[type];
 
+    // --- places of interest ---------------------------------------------------
+    // A spur off one side of the trail into a hand-built scene. Needs a
+    // straight, quiet stretch: no bridge, boardwalk or crossing nearby.
+    if (d >= this.nextPoi && !this.ev && !this.board && d - region.start > 120 && region.end - d > 300) {
+      const kind = poiFor(type, rng);
+      if (kind) {
+        const R = POI_KINDS[kind].R;
+        const at = d + 80;
+        const j = Math.round(at / STEP);
+        // the side away from a lake's water, or the town's parallel road
+        let side = rng.sign();
+        if (type === 'lake') side = hash(region.index, 99) % 2 ? -1 : 1;
+        if (type === 'town') side = 1;
+        const poi = { kind, i: j, side, R, seed: hash(this.seed, j, 404), region: region.index };
+        POI_KINDS[kind].name(poi, rng);
+        this.pois.push(poi);
+        this.straighten(d, at + R + 40);
+        this.nextCross = Math.max(this.nextCross, at + R + 120);
+        this.nextEvent = Math.max(this.nextEvent, at + R + 200);
+        this.nextPoi = d + rng.range(2600, 4800);
+      } else this.nextPoi = d + 200;
+    }
+
     // --- plan big structures ------------------------------------------------
-    if (!this.ev && d >= this.nextEvent) {
+    if (!this.ev && d >= this.nextEvent && !this.pois.some((q) => Math.abs(q.i * STEP - d) < q.R + 300)) {
       const opts = EVENTS[type];
       this.nextEvent = d + (type === 'lakeloop' && !region.over ? 60 : rng.range(500, 1500));
       if (opts) {
@@ -112,7 +138,9 @@ export class Path {
     // boardwalks: long ones in the swamp, short footbridges over creeks elsewhere
     const creeky = type === 'foottrail' || type === 'railtrail' || type === 'hammock';
     if (!this.board && !this.ev && d > region.start + 40) {
-      if (type === 'wetland' && region.end - d > 140 && rng.chance(0.03)) {
+      if (this.pois.some((q) => Math.abs(q.i * STEP - d) < q.R + 80)) {
+        // keep the trail by a place of interest plain and level
+      } else if (type === 'wetland' && region.end - d > 140 && rng.chance(0.03)) {
         const len = Math.min(rng.range(80, 260), region.end - d - 30);
         this.board = { start: d, end: d + len, h: 0.72, ramp: 12, creek: false };
       } else if (creeky && region.end - d > 80 && rng.chance(type === 'foottrail' ? 0.012 : 0.004)) {

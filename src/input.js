@@ -12,7 +12,7 @@ export class Input {
       if (e.repeat) return;
       this.keys.add(e.code);
       const map = {
-        KeyC: 'cruise', KeyB: 'bell', Space: 'bell', Escape: 'pause', KeyP: 'pause', KeyU: 'units', KeyH: 'help', KeyT: 'time', KeyM: 'mute', KeyF: 'fullscreen',
+        KeyE: 'interact', KeyC: 'cruise', KeyB: 'bell', Space: 'bell', Escape: 'pause', KeyP: 'pause', KeyU: 'units', KeyH: 'help', KeyT: 'time', KeyM: 'mute', KeyF: 'fullscreen',
         Equal: 'cruiseUp', NumpadAdd: 'cruiseUp', BracketRight: 'cruiseUp', Minus: 'cruiseDown', NumpadSubtract: 'cruiseDown', BracketLeft: 'cruiseDown',
       };
       if (map[e.code]) this.events.push(map[e.code]);
@@ -45,6 +45,10 @@ export class Input {
     let brake = k.has('KeyS') || k.has('ArrowDown') ? 1 : 0;
     let steer = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
     const sprint = k.has('ShiftLeft') || k.has('ShiftRight');
+    // on foot, A/D sidestep and the arrow keys turn
+    let strafe = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
+    const turn = (k.has('ArrowRight') ? 1 : 0) - (k.has('ArrowLeft') ? 1 : 0);
+    let moveY = 0;
     let lx = this.lookX, ly = this.lookY;
     this.lookX = this.lookY = 0;
     let analog = false;
@@ -57,6 +61,10 @@ export class Input {
       if (Math.abs(tu.steer) > 0.02) {
         steer = tu.steer;
         analog = true;
+      }
+      if (tu.moveX || tu.moveY) {
+        strafe = tu.moveX;
+        moveY = tu.moveY;
       }
     }
 
@@ -71,8 +79,11 @@ export class Input {
       const sx = dz(gp.axes[0] || 0);
       if (sx) {
         steer = sx;
+        strafe = sx;
         analog = true;
       }
+      const sy = dz(gp.axes[1] || 0);
+      if (sy) moveY = -sy;
       const rx = dz(gp.axes[2] || 0), ry = dz(gp.axes[3] || 0);
       if (rx || ry) {
         lx += rx * 14;
@@ -85,6 +96,7 @@ export class Input {
         this.padPrev[i] = p;
       };
       edge(0, 'bell');
+      edge(1, 'interact');
       edge(2, 'cruise');
       edge(9, 'pause');
       edge(3, 'units');
@@ -94,6 +106,6 @@ export class Input {
     }
     const ev = this.events;
     this.events = [];
-    return { throttle, brake, steer, sprint, lookX: lx, lookY: ly, lastLook: this.lastLook, events: ev, analog };
+    return { throttle, brake, steer, sprint, strafe, turn, moveY, lookX: lx, lookY: ly, lastLook: this.lastLook, events: ev, analog };
   }
 }

@@ -215,6 +215,7 @@ export class Bike {
     headM.position.set(0, 1.62, -0.06);
     headM.castShadow = true;
     R.add(torso, headM);
+    this.riderParts = [...this.arms, ...this.sleeves, ...this.legs.flatMap((l) => [l.thigh, l.shin, l.shoe]), torso, headM];
 
     this.camBase = new THREE.Vector3(0, 1.55, -0.04);
     this.camera.position.copy(this.camBase);
@@ -272,7 +273,7 @@ export class Bike {
           if (dx * dx + dz * dz > 400) continue;
           const cn = path.nearest(c.x, c.z, this.s, 12);
           const ahead = (cn.s - this.s) * STEP;
-          if (ahead > -1 && ahead < Math.max(28, this.v * 3) && Math.abs(cn.lat - lane) < c.r + 0.75) {
+          if (ahead > -1 && ahead < Math.max(28, this.v * 3) && (this.passSide.has(c) || Math.abs(cn.lat - lane) < c.r + 0.75)) {
             // pick a side once and stick to it until we're past
             if (!this.passSide.has(c)) this.passSide.set(c, near.lat >= cn.lat ? 1 : -1);
             lane = cn.lat + this.passSide.get(c) * (c.r + 0.8);
@@ -320,8 +321,14 @@ export class Bike {
     this.h += yawRate * dt;
     const nx = this.x + Math.sin(this.h) * this.v * dt;
     const nz = this.z + Math.cos(this.h) * this.v * dt;
-    this.x = nx;
-    this.z = nz;
+    // springs, marshes and lakes at the places of interest: you stop at the edge
+    if (this.world.blocked(nx, nz, this.y, false)) {
+      this.hit(env);
+      this.v = 0;
+    } else {
+      this.x = nx;
+      this.z = nz;
+    }
     this.dist += this.v * dt;
     if (this.v > 0.3) this.rideTime += dt;
 
@@ -342,6 +349,7 @@ export class Bike {
     const chunk = Math.floor(this.s / 100);
     for (const list of this.world.colliders(chunk)) {
       for (const c of list) {
+        if (c.y0 !== undefined && (this.y + 1.6 < c.y0 || this.y > c.y1)) continue;
         const dx = this.x - c.x;
         const dz = this.z - c.z;
         if (Math.abs(dx) > 25 || Math.abs(dz) > 25) continue;
@@ -416,6 +424,24 @@ export class Bike {
     this.lampLens.color.setScalar(0.2 + night * 0.8);
 
     return { near, surf, onSurf, yawRate };
+  }
+
+  // Leave the bike on its kickstand while you walk around.
+  park() {
+    this.v = 0;
+    this.cruise = false;
+    this.lean = 0.16;
+    this.steer = this.steerIn = 0.25;
+    this.root.rotation.set(0, this.h, this.lean);
+    this.bar.rotation.y = 0.35;
+    for (const m of this.riderParts) m.visible = false;
+  }
+
+  mount(yaw) {
+    for (const m of this.riderParts) m.visible = true;
+    this.lean = 0;
+    this.steer = this.steerIn = 0;
+    this.yaw = yaw;
   }
 
   hit(env) {

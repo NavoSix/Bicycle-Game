@@ -178,6 +178,22 @@ export class Sound {
     }
   }
 
+  // One footfall: hollow on boards, a tap on pavement, a soft scuff on sand or grass.
+  footstep(surface, run) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const g = run ? 1.4 : 1;
+    if (surface === 'board' || surface === 'bridge') {
+      this.chirp(t, 160, 90, 0.09, 0.07 * g, 'sine');
+      this.click(t, 420, 0.1 * g, 0.05);
+    } else if (surface === 'grass' || surface === 'dirt') {
+      this.click(t, 1400 + Math.random() * 600, 0.05 * g, 0.07);
+    } else {
+      this.click(t, 2200, 0.06 * g, 0.03);
+      this.click(t + 0.012, 900, 0.04 * g, 0.04);
+    }
+  }
+
   thump(a = 1) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;

@@ -4,6 +4,7 @@ import { STEP, CROSS_HALF } from './path.js';
 import { textures } from './textures.js';
 import * as S from './scenery.js';
 import { wallKinds } from './walls.js';
+import { buildPoi, poiPlace, wet, walkHeight, fireflies } from './poi.js';
 
 export const CH = 100; // path points per chunk (200 m)
 const MILE = 1609.344;
@@ -89,11 +90,13 @@ function mats() {
     road3: lam(T.road3),
     concreteTrail: lam(T.deck, 0xeeeae2),
     struct: new THREE.MeshLambertMaterial({ color: 0xb9b4a8 }),
+    floor: {},
     road: lam(T.road),
     road2: lam(T.road2),
     road4: lam(T.road4),
     concrete: lam(T.concrete),
     board: lam(T.boards, 0xd8c8b0),
+    stairs: lam(T.boards, 0xb8a890),
     sand: lam(T.sand),
     litter: lam(T.litter),
     parking: lam(T.road, 0xdddddd),
@@ -101,6 +104,12 @@ function mats() {
     swamp: new THREE.MeshPhongMaterial({ color: 0x2e3f2c, specular: 0x667766, shininess: 60 }),
     pond: new THREE.MeshPhongMaterial({ color: 0x3a6660, specular: 0x88aaaa, shininess: 70 }),
   };
+  // leaf litter for the floor of places of interest: one big disc, so the
+  // texture repeats instead of stretching
+  const lit = T.litter.clone();
+  lit.repeat.set(12, 12);
+  lit.needsUpdate = true;
+  M.floor.litter = new THREE.MeshLambertMaterial({ map: lit, color: 0xc8c0a8 });
   for (const k of ['lake', 'swamp', 'pond', 'sand', 'litter', 'concrete', 'gravel']) {
     M[k].polygonOffset = true;
     M[k].polygonOffsetFactor = -1;
@@ -166,6 +175,21 @@ function vstrip(path, idx, lat, yTop, yBot, mat, rep) {
   return new THREE.Mesh(g, mat);
 }
 
+// Is (x, z) inside the space a place of interest claims? (Only on its own
+// side of the trail; the far side carries on as normal.)
+function inPoiZone(path, x, z, i, pad = 0) {
+  for (const poi of path.pois) {
+    if (Math.abs(poi.i - i) > 260) continue;
+    const pl = poiPlace(path, poi);
+    const dx = x - pl.cx, dz = z - pl.cz;
+    if (dx * dx + dz * dz > (poi.Rv + 2 + pad) ** 2) continue;
+    const lz = Math.sin(pl.rot) * dx + Math.cos(pl.rot) * dz;
+    const w = path.pts[poi.i].w;
+    if (lz < pl.D - w / 2 - 1.5) return true;
+  }
+  return false;
+}
+
 function runs(i0, i1, test) {
   // contiguous [a, b] index ranges where test(i) holds (b inclusive)
   const out = [];
@@ -214,6 +238,60 @@ export class World {
     }
   }
 
+  // Places of interest currently built, nearest chunks first.
+  pois() {
+    const out = [];
+    for (const ch of this.chunks.values()) out.push(...ch.pois);
+    return out;
+  }
+
+  updatePois(t, night) {
+    const ff = [];
+    for (const d of this.pois()) {
+      for (const a of d.anims) a(t);
+      if (d.fireflies) {
+        const [x, z] = d.local.w(d.fireflies.x, d.fireflies.z);
+        ff.push({ x, z, r: d.fireflies.r });
+      }
+    }
+    fireflies(this.scene).update(t, ff, night);
+  }
+
+  // Water you can't ride or walk into (springs, marshes, lakes at the POIs).
+  blocked(x, z, y, onFoot) {
+    for (const d of this.pois()) {
+      if ((x - d.cx) ** 2 + (z - d.cz) ** 2 > (d.Rv + 5) ** 2) continue;
+      if (wet(d, x, z, y, onFoot)) return true;
+    }
+    return false;
+  }
+
+  // How far from the trail you can wander on foot here: up to the painted
+  // backdrop, the lake shore, or the edge of a swamp boardwalk.
+  limit(n) {
+    const p = this.path.pts[n.i];
+    const reg = this.path.regions.list[p.r];
+    const side = Math.sign(n.lat) || 1;
+    if ((p.type === 'lake' || p.type === 'lakeloop') && side === lakeSide(reg)) {
+      const g = lakeGeom(p.type, n.i, p.d, reg);
+      if (g.e > 0.05) return g.ss - 0.4;
+    }
+    if (p.type === 'wetland' && p.surf === 'board' && p.y > 0.35) return p.w / 2 + 0.2;
+    const ws = wallSpec(p, n.i, reg, side)[0];
+    return ws ? ws[1] - 1.5 : 60;
+  }
+
+  // Height of any boardwalk, dock or tower floor under you within a step.
+  deckHeight(x, z, y) {
+    let best = null;
+    for (const d of this.pois()) {
+      if ((x - d.cx) ** 2 + (z - d.cz) ** 2 > (d.Rv + 5) ** 2) continue;
+      const h = walkHeight(d, x, z, y);
+      if (h !== null && (best === null || h > best)) best = h;
+    }
+    return best;
+  }
+
   colliders(c) {
     const out = [];
     for (let k = c - 1; k <= c + 1; k++) {
@@ -256,6 +334,7 @@ export class World {
       },
       ok(x, z, clr, i) {
         if (path.clearance(x, z, i - 70, i + 70) < clr) return false;
+        if (inPoiZone(path, x, z, i, clr)) return false;
         for (const cr of path.crossings) {
           if (Math.abs(cr.i - i) > 200) continue;
           const dx = x - cr.x, dz = z - cr.z;
@@ -361,10 +440,16 @@ export class World {
     if (c === 0) this.buildHome(ctx);
     this.decorate(ctx);
 
+    // places of interest whose turnoff is in this chunk
+    const pois = [];
+    for (const poi of path.pois) {
+      if (poi.i >= i0 && poi.i < i1) pois.push(buildPoi(ctx, poi, mt));
+    }
+
     const inst = b.build();
     group.add(inst);
     this.root.add(group);
-    const ch = { c, group, colliders: b.colliders };
+    const ch = { c, group, colliders: b.colliders, pois };
     this.chunks.set(c, ch);
     return ch;
   }
@@ -407,6 +492,10 @@ export class World {
           const reg = path.regions.list[p.r];
           const spec = wallSpec(p, i, reg, side)[layer];
           let ok = !!spec && !(p.type === 'street' && p.d < 60);
+          if (ok) {
+            const x = p.x - Math.cos(p.h) * side * spec[1], z = p.z + Math.sin(p.h) * side * spec[1];
+            if (inPoiZone(path, x, z, i, 1)) ok = false;
+          }
           let gap = false;
           if (ok) {
             const [kind, lat] = spec;

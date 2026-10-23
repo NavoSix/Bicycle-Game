@@ -35,6 +35,13 @@
     #toast .sub { font-style: italic; font-size: clamp(14px, 1.6vw, 18px); opacity: 0.85; margin-top: 2px; }
     #note { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); font-family: system-ui, sans-serif; font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0; transition: opacity 0.6s; pointer-events: none; text-shadow: 0 1px 6px rgba(0,0,0,0.7); white-space: nowrap; }
     #note.show { opacity: 0.85; }
+    #prompt { position: fixed; left: 50%; bottom: 58px; transform: translateX(-50%); font-family: system-ui, sans-serif; font-size: 13px; letter-spacing: 0.08em; opacity: 0; transition: opacity 0.4s; pointer-events: none; text-shadow: 0 1px 6px rgba(0,0,0,0.8); white-space: nowrap; padding: 6px 14px; border-radius: 999px; background: rgba(16,22,18,0.35); }
+    #prompt.show { opacity: 0.92; }
+    #plaque { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(520px, calc(100vw - 32px)); background: #efe4c8; color: #2a2418; border: 10px solid #4a3220; border-radius: 6px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); transition: opacity 0.35s; }
+    #plaque.hidden { opacity: 0; pointer-events: none; }
+    #plaque h3 { margin: 0; padding: 14px 20px; background: #3d4a2a; color: #f4ecd6; font-weight: 400; font-size: 24px; }
+    #plaque p { margin: 0; padding: 16px 20px 6px; font-size: 17px; line-height: 1.55; }
+    #plaque .close { padding: 0 20px 14px; font-family: system-ui, sans-serif; font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; opacity: 0.6; }
     #pause, #help { background: var(--shade); flex-direction: column; text-align: center; transition: opacity 0.4s; pointer-events: auto; padding: 16px; }
     #pause h2, #help h2 { font-weight: 400; font-size: 34px; margin: 0 0 8px; }
     #pause .stats { font-family: system-ui, sans-serif; font-size: 14px; opacity: 0.9; line-height: 1.8; margin: 10px 0 24px; }
@@ -66,9 +73,15 @@
     #touchui .steer { left: calc(18px + env(safe-area-inset-left)); bottom: calc(26px + env(safe-area-inset-bottom)); width: 190px; height: 76px; }
     #touchui .steer .track { position: absolute; left: 0; right: 0; top: 50%; height: 30px; margin-top: -15px; border-radius: 999px; background: rgba(16,22,18,0.32); border: 1.5px solid rgba(246,241,228,0.4); }
     #touchui .steer .knob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 999px; background: rgba(246,241,228,0.28); border: 1.5px solid rgba(246,241,228,0.75); transition: transform 0.08s; }
+    #touchui .act { left: 50%; transform: translateX(-50%); bottom: calc(30px + env(safe-area-inset-bottom)); height: 50px; padding: 0 22px; font-size: 12px; background: rgba(233,185,73,0.42); border-color: rgba(255,226,150,0.9); white-space: nowrap; }
+    #touchui .act.hide { display: none; }
+    #touchui.walk .pedal, #touchui.walk .brake, #touchui.walk .cruiserow { display: none; }
+    #touchui.walk .steer { width: 150px; height: 150px; }
+    #touchui.walk .steer .track { top: 0; height: 100%; margin-top: 0; border-radius: 999px; }
     body.touch #toast { bottom: calc(118px + env(safe-area-inset-bottom)); left: calc(20px + env(safe-area-inset-left)); }
     body.touch #note { bottom: calc(118px + env(safe-area-inset-bottom)); }
     @media (max-width: 600px) {
+      #touchui .act { bottom: calc(250px + env(safe-area-inset-bottom)); }
       body.touch #note { top: calc(84px + env(safe-area-inset-top)); bottom: auto; }
       body.touch #toast { bottom: calc(196px + env(safe-area-inset-bottom)); }
     }
@@ -88,11 +101,13 @@
     <div class="go">Building the neighborhood…</div>
     <div class="keys desk-only">
       <kbd>W</kbd> pedal &nbsp; <kbd>S</kbd> brake &nbsp; <kbd>A</kbd><kbd>D</kbd> steer &nbsp; <kbd>Shift</kbd> push harder<br />
-      <kbd>C</kbd> cruise (rides the trail for you) &nbsp; <kbd>−</kbd><kbd>+</kbd> cruise speed &nbsp; <kbd>Space</kbd> bell &nbsp; mouse to look around &nbsp; <kbd>H</kbd> all keys
+      <kbd>C</kbd> cruise (rides the trail for you) &nbsp; <kbd>−</kbd><kbd>+</kbd> cruise speed &nbsp; <kbd>Space</kbd> bell &nbsp; mouse to look around<br />
+      Brown signs point to places worth a stop: pull in, press <kbd>E</kbd> to get off and explore &nbsp; <kbd>H</kbd> all keys
     </div>
     <div class="keys touch-only">
       Hold <b>Pedal</b> to ride · slide the left control to steer · drag anywhere to look<br />
-      Tap <b>Cruise</b> and the bike rides the trail for you · <b>− / +</b> sets its speed
+      Tap <b>Cruise</b> and the bike rides the trail for you · <b>− / +</b> sets its speed<br />
+      Brown signs point to places worth a stop: pull in and tap <b>Walk around</b> to explore
     </div>
     <div class="route">Route <span id="seed"></span> · <a href="?" id="newroute">new route</a></div>
   </div>
@@ -114,14 +129,18 @@
       <kbd>Shift</kbd> pedal harder &nbsp; <kbd>C</kbd> cruise — keeps a steady pace and follows the trail<br />
       <kbd>−</kbd>/<kbd>+</kbd> or <kbd>[</kbd>/<kbd>]</kbd> cruise speed, 2 mph at a time, up to 30 mph<br />
       Mouse looks around (click to capture) &nbsp; <kbd>Space</kbd>/<kbd>B</kbd> ring the bell<br />
+      <kbd>E</kbd> get off and walk · get back on · read a sign · use the binoculars<br />
+      On foot: <kbd>W</kbd><kbd>S</kbd> walk, <kbd>A</kbd><kbd>D</kbd> sidestep, <kbd>←</kbd><kbd>→</kbd> turn, <kbd>Shift</kbd> run<br />
       <kbd>U</kbd> mph / km/h &nbsp; <kbd>T</kbd> skip ahead an hour &nbsp; <kbd>M</kbd> mute &nbsp; <kbd>F</kbd> fullscreen &nbsp; <kbd>Esc</kbd>/<kbd>P</kbd> pause<br />
-      Gamepad: RT pedal · LT brake · left stick steer · right stick look · X cruise · D-pad cruise speed · A bell<br />
+      Gamepad: RT pedal · LT brake · left stick steer (or walk) · right stick look · B get off / on, read · X cruise · D-pad cruise speed · A bell<br />
       Touch: hold Pedal, slide the steering control, drag anywhere to look, Cruise with − / + for speed
     </div>
     <div style="margin-top: 24px"><button id="helpclose">Back</button></div>
   </div>
 
   <div id="toast"><div class="name"></div><div class="sub"></div></div>
+  <div id="prompt"></div>
+  <div id="plaque" class="hidden"><h3 id="plaque-title"></h3><p id="plaque-text"></p><div class="close"><span class="desk-only">E to close</span><span class="touch-only">Tap Close when you're done</span></div></div>
   <div id="note"></div>
 
   <script type="module" src="src/main.js"></script>
