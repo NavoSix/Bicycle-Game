@@ -56,9 +56,15 @@ addEventListener('resize', () => {
 // --- state -------------------------------------------------------------------
 let started = false;
 let paused = false;
-let hours = 8.2; // a Saturday-morning start
+let clock = 8.2; // hours since midnight of day one: a Saturday-morning start
+let hours = clock;
 const TIME_SCALE = 6; // one real minute = six minutes of Florida daylight
 let metric = false;
+
+// The moon starts at a waning half and moves on an eighth of a cycle each
+// night. The phase changes at noon, so it holds steady from dusk to dawn.
+const moonPhase = () => (0.75 + 0.125 * Math.max(0, Math.floor((clock - 12) / 24))) % 1;
+const MOON_NAMES = ['New moon', 'Waxing crescent', 'Waxing half moon', 'Waxing gibbous', 'Full moon', 'Waning gibbous', 'Waning half moon', 'Waning crescent'];
 let region = -1;
 let ccTimer = 0;
 
@@ -116,7 +122,7 @@ function setPaused(p) {
   paused = p;
   $('pause').classList.toggle('hidden', !p);
   if (p) {
-    $('stats').innerHTML = `${fmtDist(bike.dist)} ridden in ${fmtRide(bike.rideTime)}<br>${path.regions.list[region]?.name || ''} · ${fmtClock(hours)}<br><span style="opacity:.7">Route #${seed}</span>`;
+    $('stats').innerHTML = `${fmtDist(bike.dist)} ridden in ${fmtRide(bike.rideTime)}<br>${path.regions.list[region]?.name || ''} · ${fmtClock(hours)} · ${MOON_NAMES[Math.round(moonPhase() * 8) % 8]}<br><span style="opacity:.7">Route #${seed}</span>`;
     if (document.pointerLockElement) document.exitPointerLock();
     sound.ctx?.suspend();
   } else {
@@ -139,22 +145,22 @@ canvas.addEventListener('click', () => {
 });
 
 // --- loop --------------------------------------------------------------------
-const clock = new THREE.Clock();
+const frameTimer = new THREE.Clock();
 const tint = new THREE.Color(GROUND_TINT.street);
 const idleInput = { throttle: 0, brake: 0, steer: 0, sprint: false, lookX: 0, lookY: 0, lastLook: -10, events: [], analog: false };
 
 function frame() {
   requestAnimationFrame(frame);
-  const dt = Math.min(0.05, clock.getDelta());
+  const dt = Math.min(0.05, frameTimer.getDelta());
   if (started && !paused) step(dt);
   else if (!started) {
     // idle title view: slowly look around the cul-de-sac
     bike.update(dt, { ...idleInput, lastLook: performance.now() / 1000 }, { night: sky.night });
     bike.yaw = Math.sin(performance.now() / 6000) * 0.6;
     bike.pitch = -0.05;
-    sky.update(dt, hours, camera);
+    sky.update(dt, hours, camera, moonPhase());
   }
-  lightWalls(sky.pal, sky.night);
+  lightWalls(sky.pal, sky.night * (1 - 0.45 * sky.moonLight));
   // trail lights come on at dusk, a little before full dark
   lightLamps(THREE.MathUtils.smoothstep(-sky.sunDir.y, -0.07, 0.07));
   renderer.render(scene, camera);
@@ -169,7 +175,8 @@ function step(dt) {
       metric = !metric;
       note(metric ? 'km/h' : 'mph');
     } else if (e === 'time') {
-      hours = (hours + 1) % 24;
+      clock += 1;
+      hours = clock % 24;
       note(fmtClock(hours));
     } else if (e === 'mute') note(sound.toggleMute() ? 'Sound off' : 'Sound on');
     else if (e === 'help') $('help').classList.toggle('hidden');
@@ -180,7 +187,8 @@ function step(dt) {
   }
   if (paused) return;
 
-  hours = (hours + (dt * TIME_SCALE) / 3600) % 24;
+  clock += (dt * TIME_SCALE) / 3600;
+  hours = clock % 24;
   const env = {
     night: sky.night,
     notify: note,
@@ -190,7 +198,7 @@ function step(dt) {
   const r = bike.update(dt, inp, env);
   const traffic = npcs.update(dt, bike, env);
   world.update(bike.s, 1);
-  sky.update(dt, hours, camera);
+  sky.update(dt, hours, camera, moonPhase());
 
   // region changes → a quiet title card
   const p = path.pts[Math.floor(bike.s)];
@@ -240,4 +248,4 @@ requestAnimationFrame(() => {
 frame();
 
 // handy for poking at things from the console
-window.__ride = { bike, path, world, sky, npcs, input, renderer, get hours() { return hours; }, set hours(h) { hours = h; } };
+window.__ride = { bike, path, world, sky, npcs, input, renderer, get hours() { return hours; }, set hours(h) { clock = Math.floor(clock / 24) * 24 + h; hours = h; }, get clock() { return clock; }, set clock(c) { clock = c; hours = c % 24; }, moonPhase };

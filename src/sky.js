@@ -31,11 +31,25 @@ function palette(e, out) {
   return out;
 }
 
+// Sun and moon ride the same arc: up in the east (+x) around 7:00, down in the
+// west around 19:45 (for the moon, shifted by its phase).
+function arcDir(hours, out) {
+  const t = ((hours - 7.0) / 12.75) * Math.PI;
+  const alt = Math.sin(t);
+  out.set(Math.cos(t), alt * 0.93, -Math.abs(alt) * 0.35 - 0.12).normalize();
+  if (alt < 0) out.y = alt * 0.9;
+  return out;
+}
+
+const MOON_COL = new THREE.Color(0x9fb0d8);
+
 export class Sky {
   constructor(scene, seed) {
     this.scene = scene;
     this.pal = { top: new THREE.Color(), hor: new THREE.Color(), sun: new THREE.Color(), amb: 1 };
     this.sunDir = new THREE.Vector3(0, 1, 0);
+    this.moonDir = new THREE.Vector3(0, 1, 0);
+    this.moonLight = 0;
 
     this.uniforms = {
       top: { value: new THREE.Color() },
@@ -48,6 +62,10 @@ export class Sky {
       cloudT: { value: 0 },
       cover: { value: 0.4 },
       amb: { value: 1 },
+      moonDir: { value: this.moonDir },
+      moonPhase: { value: 0.75 },
+      moonVis: { value: 0 },
+      moonLight: { value: 0 },
     };
     const mat = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
@@ -58,6 +76,7 @@ export class Sky {
       fragmentShader: `
         uniform vec3 top, hor, sunCol, sunDir, camPos; uniform vec2 windOff;
         uniform float night, cloudT, cover, amb; varying vec3 vDir;
+        uniform vec3 moonDir; uniform float moonPhase, moonVis, moonLight;
         float hash3(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
         float vnoise(vec3 x){
           vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 * f);
@@ -83,6 +102,29 @@ export class Sky {
           if (d.y < 0.0) col = mix(hor, hor * 0.7, min(1.0, -d.y * 4.0));
           float s = max(dot(d, normalize(sunDir)), 0.0);
           col += sunCol * (pow(s, 900.0) * 6.0 + pow(s, 40.0) * 0.35 + pow(s, 6.0) * 0.12);
+          // the moon: a lit disc whose terminator follows the phase, lit side toward the sun
+          vec3 md = normalize(moonDir);
+          float mc = dot(d, md);
+          const float MR = 0.028;
+          if (mc > 0.99 && md.y > -0.05) {
+            vec3 rt = normalize(cross(md, vec3(0.0, 1.0, 0.0)));
+            vec3 upv = cross(rt, md);
+            vec2 q = vec2(dot(d, rt), dot(d, upv)) / MR;
+            float r2 = dot(q, q);
+            if (r2 < 1.0) {
+              vec3 n = vec3(q, sqrt(1.0 - r2));
+              vec3 sp = sunDir - md * dot(sunDir, md);
+              vec2 e2 = normalize(vec2(dot(sp, rt), dot(sp, upv)) + vec2(1e-5, 0.0));
+              float ph = moonPhase * 6.2831853;
+              vec3 L = vec3(e2 * abs(sin(ph)), -cos(ph));
+              float lit = smoothstep(-0.05, 0.05, dot(n, L));
+              float maria = 0.8 + 0.2 * vnoise(vec3(q * 2.6 + 5.0, 1.0));
+              vec3 mcol = vec3(0.97, 0.96, 0.9) * maria * (lit * 1.15 + 0.03);
+              float edge = smoothstep(1.0, 0.92, r2);
+              col = mix(col, max(col, mcol), edge * moonVis);
+            }
+          }
+          col += vec3(0.55, 0.62, 0.8) * moonLight * (pow(max(mc, 0.0), 1500.0) * 0.6 + pow(max(mc, 0.0), 60.0) * 0.07);
           if (d.y > 0.012) {
             float t = 1500.0 / d.y;
             vec2 q = camPos.xz + d.xz * t + windOff;
@@ -93,6 +135,8 @@ export class Sky {
               float lit = clamp(1.0 - (den2 - den) * 1.4 - den * 0.3, 0.25, 1.0);
               vec3 litC = mix(vec3(1.0), sunCol, 0.45) * (0.3 + 0.8 * amb);
               vec3 shC = mix(hor, top, 0.45) * (0.5 + 0.25 * amb);
+              litC += vec3(0.5, 0.56, 0.72) * moonLight * 0.45;
+              shC += vec3(0.25, 0.28, 0.36) * moonLight * 0.25;
               vec3 cc = mix(shC, litC, lit);
               cc += sunCol * pow(s, 10.0) * 0.5 * (1.0 - den);
               float fade = smoothstep(0.012, 0.16, d.y);
@@ -230,41 +274,57 @@ export class Sky {
     this.vCenter = new THREE.Vector3();
   }
 
-  update(dt, hours, cam) {
-    // sun path: rises in the east (+x) around 7:00, sets west around 19:45
-    const t = ((hours - 7.0) / 12.75) * Math.PI;
-    const alt = Math.sin(t);
-    this.sunDir.set(Math.cos(t), alt * 0.93, -Math.abs(alt) * 0.35 - 0.12).normalize();
-    if (alt < 0) this.sunDir.y = alt * 0.9;
+  // moonPhase: 0 new, 0.25 waxing half, 0.5 full, 0.75 waning half
+  update(dt, hours, cam, moonPhase = 0.75) {
+    arcDir(hours, this.sunDir);
     const e = this.sunDir.y;
     const pal = palette(e, this.pal);
     const u = this.uniforms;
-    u.top.value.copy(pal.top);
-    u.hor.value.copy(pal.hor);
-    u.sunCol.value.copy(pal.sun);
     const night = Math.min(1, Math.max(0, (-e - 0.02) / 0.15));
     u.night.value = night;
     this.night = night;
-    this.starMat.opacity = night * 0.9;
+
+    // The moon trails the sun by its phase: a waning half rises near midnight,
+    // a full moon at sunset, a new moon is up with the sun and can't be seen.
+    arcDir((((hours - moonPhase * 24) % 24) + 24) % 24, this.moonDir);
+    const illum = (1 - Math.cos(moonPhase * Math.PI * 2)) / 2;
+    const moonUp = THREE.MathUtils.smoothstep(this.moonDir.y, -0.02, 0.12);
+    this.moonLight = illum * moonUp * night;
+    this.illum = illum;
+    u.moonPhase.value = moonPhase;
+    u.moonVis.value = Math.min(1, illum * 3) * (0.35 + 0.65 * night);
+    u.moonLight.value = this.moonLight;
+
+    // a bright moon lifts the night sky toward a deep blue
+    const ml = this.moonLight;
+    pal.top.lerp(new THREE.Color(0x182844), ml * 0.6 * night);
+    pal.hor.lerp(new THREE.Color(0x26324a), ml * 0.6 * night);
+    u.top.value.copy(pal.top);
+    u.hor.value.copy(pal.hor);
+    u.sunCol.value.copy(pal.sun);
+    this.starMat.opacity = night * 0.9 * (1 - 0.55 * ml);
 
     this.scene.fog.color.copy(pal.hor);
-    this.hemi.color.copy(pal.hor).lerp(pal.top, 0.3);
+    this.hemi.color.copy(pal.hor).lerp(pal.top, 0.3).lerp(MOON_COL, ml * 0.5);
     this.hemi.groundColor.setHex(0x8a9466).multiplyScalar(0.4 + pal.amb * 0.6);
-    this.hemi.intensity = 0.3 + pal.amb * 1.9;
+    this.hemi.intensity = 0.3 + pal.amb * 1.9 + ml * 0.45;
     const sunUp = Math.max(0, Math.min(1, e / 0.08 + 0.3));
     this.sun.color.copy(pal.sun);
     this.sun.intensity = 2.8 * sunUp;
     this.sun.castShadow = e > -0.02;
-    // moonlight-ish when the sun's down
+    // after sunset the key light becomes the moon, as bright as its phase allows
+    this.lightDir = this.sunDir;
     if (e < 0) {
-      this.sun.color.setHex(0x8899cc);
-      this.sun.intensity = 0.25 * night;
+      this.sun.color.copy(MOON_COL);
+      this.sun.intensity = night * (0.03 + 0.85 * ml);
+      this.sun.castShadow = ml > 0.25;
+      if (moonUp > 0.01) this.lightDir = this.moonDir;
     }
 
     const p = cam.getWorldPosition(this._v || (this._v = new THREE.Vector3()));
     this.dome.position.copy(p);
     this.stars.position.copy(p);
-    const ld = e > 0 ? this.sunDir : this._moon || (this._moon = new THREE.Vector3(-0.3, 0.8, 0.4).normalize());
+    const ld = this.lightDir.y > 0.02 ? this.lightDir : this._zen || (this._zen = new THREE.Vector3(-0.3, 0.8, 0.4).normalize());
     // snap shadow camera to texel grid to stop shimmering
     const snap = 140 / 2048;
     const sx = Math.round(p.x / snap) * snap;

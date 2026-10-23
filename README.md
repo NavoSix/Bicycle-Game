@@ -89,8 +89,16 @@ move your finger left or right to steer, and use two fingers to brake.
   into lines across the sky while thunderheads build on the horizon. After about
   two hours of riding, the sun goes down, the crickets start and your headlight
   comes on.
-- At dusk, knee-high bollard lights along the paved trail start to glow, each
-  throwing a dim pool of warm light across the pavement.
+- At dusk, knee-high bollard lights start to glow through towns, lake parks,
+  greenways and neighborhood stretches. Each throws a dim pool of warm light
+  across the pavement. The woods, swamps, groves and rail beds stay dark.
+- The moon starts each ride as a waning half and moves an eighth of a cycle
+  each night: waning crescent, new, waxing crescent, waxing half, waxing
+  gibbous, full, waning gibbous, and back to half. It rises and sets with its
+  phase. The waning half comes up around 1 a.m., and a full moon is up all
+  night. Moonlight is as bright as the phase allows, so a full moon lights the
+  trail blue and casts shadows, while a new moon leaves only your headlight.
+  The pause screen shows tonight's moon.
 - Bridge ramps are real climbs: you'll slow down going up and coast down the
   other side.
 - Other trail users come the other way: cyclists, joggers, and people walking

@@ -610,9 +610,8 @@ export class World {
   // Low bollard lights, alternating sides, along paved trail. On bridges and
   // boardwalks they sit on the deck at the rail.
   trailLights(ctx, i, p) {
-    // not on streets (they have streetlights) or the Florida Trail and its narrow footbridges
-    const paved = p.surf !== 'road' && p.surf !== 'dirt' && p.type !== 'street' && p.type !== 'foottrail' && p.w > 2.8;
-    if (!paved || i % 9 !== 0) return;
+    // only through towns and parks; the woods stay dark
+    if (!LIT.includes(p.type) || p.w < 2.8 || i % 9 !== 0) return;
     const side = i % 18 === 0 ? 1 : -1;
     const raised = (p.surf === 'board' || p.surf === 'bridge') && p.y > 0.2;
     const lat = side * (p.w / 2 + (raised ? -0.25 : 0.45));
@@ -862,6 +861,10 @@ function pondPatch(ctx, i, side) {
     ctx.place(kk, side * 52, 14, (x, z) => S.house(b, rng, x, z, rot, { pool: rng.chance(0.6) }));
   }
 };
+
+// region types that get trail lights: towns, city lake parks, greenways and
+// the backyard stretches through neighborhoods
+const LIT = ['town', 'lakeloop', 'corridor', 'suburbTrail'];
 
 const WIRE = new THREE.LineBasicMaterial({ color: 0x2a2a2a, fog: true });
 
