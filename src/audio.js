@@ -50,6 +50,10 @@ export class Sound {
     this.traffic = loop(brown, 'lowpass', 300);
     this.hum = loop(brown, 'lowpass', 160);
     this.cicada = loop(white, 'bandpass', 5200, 6);
+    // rain: a hiss on top, a softer roar on leaves and pavement underneath
+    this.rainHi = loop(white, 'highpass', 2500, 0.5);
+    this.rainLo = loop(brown, 'lowpass', 900, 0.6);
+    this.brown = brown;
     // cicada buzz pulsing
     const lfo = ctx.createOscillator();
     lfo.frequency.value = 0.18;
@@ -194,6 +198,29 @@ export class Sound {
     }
   }
 
+  // Thunder: a crack if it's close, then a long rolling rumble.
+  thunder(power = 0.5) {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    if (power > 0.6) this.click(t, 1800, 0.5 * power, 0.25);
+    const src = ctx.createBufferSource();
+    src.buffer = this.brown;
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.setValueAtTime(200 + power * 500, t);
+    f.frequency.exponentialRampToValueAtTime(60, t + 4.5);
+    const g = ctx.createGain();
+    const len = 3 + Math.random() * 3;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.25 + power * 0.9, t + 0.15 + (1 - power) * 0.6);
+    // a few rolls as it echoes off the cloud base
+    for (let k = 1; k < 4; k++) g.gain.exponentialRampToValueAtTime((0.2 + power * 0.6) * Math.random() + 0.05, t + (k * len) / 4);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+    src.connect(f).connect(g).connect(this.master);
+    src.start(t, Math.random() * 2, len + 0.2);
+  }
+
   thump(a = 1) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
@@ -239,8 +266,13 @@ export class Sound {
     this.set(this.traffic.f.frequency, 200 + near * 600, 0.08);
     this.set(this.hum.g.gain, st.habitat === 'town' || st.habitat === 'lakeloop' ? 0.12 : ['street', 'suburbTrail', 'corridor'].includes(st.habitat) ? 0.05 : 0.015, 1.5);
 
+    // rain
+    const rain = st.rain || 0;
+    this.set(this.rainHi.g.gain, rain * 0.14, 0.6);
+    this.set(this.rainLo.g.gain, rain * 0.35, 0.6);
+
     // ambience
-    const day = 1 - st.night;
+    const day = (1 - st.night) * (1 - Math.min(1, rain * 1.5));
     const woods = ['hammock', 'flatwoods', 'wetland', 'lake', 'grove', 'suburbTrail', 'railtrail', 'foottrail', 'corridor'].includes(st.habitat);
     const hot = st.hour > 10.5 && st.hour < 19 ? 1 : 0.3;
     const cic = woods ? 0.02 * day * hot : 0.004 * day;
@@ -255,8 +287,13 @@ export class Sound {
       this.nextBird = t + (st.habitat === 'town' ? 8 : 2.5) + Math.random() * 7;
     }
     if (t > this.nextFrog) {
-      if (st.habitat === 'wetland' || st.habitat === 'lake' || (st.night > 0.5 && woods)) this.frog(t + 0.05);
-      this.nextFrog = t + 1.5 + Math.random() * 5;
+      // the frogs go wild after a summer storm
+      const chorus = (st.wet || 0) > 0.3;
+      if (st.habitat === 'wetland' || st.habitat === 'lake' || (st.night > 0.5 && woods) || chorus) {
+        this.frog(t + 0.05);
+        if (chorus) this.frog(t + 0.3 + Math.random() * 0.5);
+      }
+      this.nextFrog = t + (chorus ? 0.6 + Math.random() * 1.5 : 1.5 + Math.random() * 5);
     }
   }
 }

@@ -4,6 +4,7 @@ import { STEP, CROSS_HALF } from './path.js';
 import { textures } from './textures.js';
 import * as S from './scenery.js';
 import { wallKinds } from './walls.js';
+import { SKY_GLSL } from './sky.js';
 import { buildPoi, poiPlace, wet, walkHeight, fireflies } from './poi.js';
 
 export const CH = 100; // path points per chunk (200 m)
@@ -115,6 +116,61 @@ function mats() {
     M[k].polygonOffsetFactor = -1;
   }
   return M;
+}
+
+// Water mirrors the sky: the same gradient and sunset as the dome (SKY_GLSL),
+// reflected off small moving ripples, with a glint of sun and more mirror at
+// grazing angles. Lakes reflect the most, tea-dark swamp water the least.
+const WATER_TIME = { value: 0 };
+export function waterSky(skyUniforms) {
+  mats();
+  for (const [k, refl] of [['lake', 0.85], ['pond', 0.8], ['swamp', 0.55]]) {
+    const m = M[k];
+    m.onBeforeCompile = (shader) => {
+      for (const u of ['top', 'hor', 'sunCol', 'sunDir', 'glow', 'glowLum', 'storm', 'amb']) shader.uniforms[u] = skyUniforms[u];
+      shader.uniforms.wTime = WATER_TIME;
+      shader.uniforms.wRefl = { value: refl };
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
+        .replace('#include <project_vertex>', '#include <project_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;\nuniform float wTime, wRefl;\n' + SKY_GLSL)
+        .replace(
+          '#include <opaque_fragment>',
+          `#include <opaque_fragment>
+          {
+            vec3 V = normalize(vWPos - cameraPosition);
+            vec2 q = vWPos.xz;
+            float t = wTime;
+            vec3 N = normalize(vec3(
+              0.03 * sin(q.x * 0.9 + t * 1.3) + 0.018 * sin(q.x * 2.3 - q.y * 1.7 + t * 2.1) + 0.01 * sin(q.y * 4.1 + t * 2.9),
+              1.0,
+              0.03 * sin(q.y * 0.8 - t * 1.1) + 0.018 * sin(q.y * 2.7 + q.x * 1.3 - t * 1.7) + 0.01 * sin(q.x * 3.7 - t * 3.1)));
+            vec3 R = reflect(V, N);
+            R.y = abs(R.y);
+            vec3 refl = skyColor(R);
+            float sg = pow(max(dot(R, normalize(sunDir)), 0.0), 260.0) * 2.5 * (1.0 - storm) * step(0.0, sunDir.y);
+            refl += sunCol * sg;
+            float fres = clamp(0.3 + 0.7 * pow(1.0 - max(dot(-V, N), 0.0), 3.0), 0.0, 1.0) * wRefl;
+            gl_FragColor.rgb = mix(gl_FragColor.rgb, refl, fres);
+          }`,
+        );
+    };
+    m.needsUpdate = true;
+  }
+}
+
+// Wet pavement goes dark after the rain, and dries in the sun.
+const PAVE_BASE = {};
+export function skyOnWater(dt, wet) {
+  WATER_TIME.value += dt;
+  if (!M) return;
+  for (const k of ['trail', 'trailw', 'road', 'road2', 'road3', 'road4', 'concrete', 'concreteTrail', 'bridge', 'parking']) {
+    const m = M[k];
+    if (!m) continue;
+    if (!PAVE_BASE[k]) PAVE_BASE[k] = m.color.clone();
+    m.color.copy(PAVE_BASE[k]).multiplyScalar(1 - 0.38 * wet);
+  }
 }
 
 // Build a strip that follows the path between lateral offsets.

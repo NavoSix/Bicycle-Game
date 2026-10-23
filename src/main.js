@@ -1,6 +1,7 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { Path } from './path.js';
-import { World, GROUND_TINT } from './world.js';
+import { World, GROUND_TINT, skyOnWater, waterSky } from './world.js';
+import { Weather } from './weather.js';
 import { Sky } from './sky.js';
 import { Bike } from './bike.js';
 import { NPCs } from './npc.js';
@@ -38,6 +39,8 @@ const path = new Path(seed);
 const world = new World(scene, path, seed);
 world.update(0, 99);
 const sky = new Sky(scene, seed);
+const weather = new Weather(scene, seed);
+waterSky(sky.uniforms);
 const bike = new Bike(scene, camera, path, world);
 bike.reset(world.start);
 const npcs = new NPCs(scene, path, seed);
@@ -190,13 +193,20 @@ function frame() {
     bike.update(dt, { ...idleInput, lastLook: performance.now() / 1000 }, { night: sky.night });
     bike.yaw = Math.sin(performance.now() / 6000) * 0.6;
     bike.pitch = -0.05;
-    sky.update(dt, hours, camera, moonPhase());
+    sky.update(dt, hours, camera, moonPhase(), skyWeather());
   }
-  lightWalls(sky.pal, sky.night * (1 - 0.45 * sky.moonLight));
+  // walls go grey under a storm, rosy in a sunset
+  lightWalls(sky.pal, Math.min(1, sky.night * (1 - 0.45 * sky.moonLight) + weather.storm * 0.45 - weather.flash * 0.5));
+  skyOnWater(dt, weather.wet);
   // trail lights come on at dusk, a little before full dark
-  lightLamps(THREE.MathUtils.smoothstep(-sky.sunDir.y, -0.07, 0.07));
+  // (and the photocells catch the dark of a storm, too)
+  lightLamps(Math.max(THREE.MathUtils.smoothstep(-sky.sunDir.y, -0.07, 0.07), THREE.MathUtils.smoothstep(weather.storm, 0.55, 0.85) * 0.8));
   touch.update(started && !paused, bike.cruise, cruiseLabel(), mode, action ? action.label : '');
   renderer.render(scene, camera);
+}
+
+function skyWeather() {
+  return { storm: weather.storm, rain: weather.rain, flash: weather.flash, after: weather.after, cell: weather.cell(clock) };
 }
 
 // --- riding and walking ----------------------------------------------------
@@ -301,6 +311,7 @@ function step(dt) {
       hours = clock % 24;
       note(fmtClock(hours));
     } else if (e === 'mute') note(sound.toggleMute() ? 'Sound off' : 'Sound on');
+    else if (e === 'storm') note(weather.toggle(clock) ? 'A storm is building' : 'The storm moves off');
     else if (e === 'help') $('help').classList.toggle('hidden');
     else if (e === 'fullscreen') {
       if (document.fullscreenElement) document.exitFullscreen();
@@ -318,6 +329,7 @@ function step(dt) {
   hours = clock % 24;
   const env = {
     night: sky.night,
+    rain: weather.rain,
     notify: note,
     thump: (a) => sound.thump(a),
     laneOffset: (s, lane) => npcs.laneOffset(s, lane),
@@ -339,7 +351,8 @@ function step(dt) {
   const player = mode === 'ride' ? bike : walker;
   const traffic = npcs.update(dt, player, env);
   world.update(player.s, 1);
-  sky.update(dt, hours, camera, moonPhase());
+  weather.update(dt, clock, camera, sound);
+  sky.update(dt, hours, camera, moonPhase(), skyWeather());
   animT += dt;
   world.updatePois(animT, sky.night);
 
@@ -401,6 +414,8 @@ function step(dt) {
     hour: hours,
     carDist: traffic.carDist,
     carSpeed: traffic.carSpeed,
+    rain: weather.rain,
+    wet: weather.wet,
   });
 }
 
@@ -422,4 +437,4 @@ requestAnimationFrame(() => {
 frame();
 
 // handy for poking at things from the console
-window.__ride = { bike, path, world, sky, npcs, input, renderer, get hours() { return hours; }, set hours(h) { clock = Math.floor(clock / 24) * 24 + h; hours = h; }, get clock() { return clock; }, set clock(c) { clock = c; hours = c % 24; }, moonPhase, get cruiseMph() { return cruiseMph; }, walker, get mode() { return mode; }, get action() { return action; }, doAction, discovered };
+window.__ride = { bike, path, world, sky, npcs, input, renderer, get hours() { return hours; }, set hours(h) { clock = Math.floor(clock / 24) * 24 + h; hours = h; }, get clock() { return clock; }, set clock(c) { clock = c; hours = c % 24; }, moonPhase, weather, get cruiseMph() { return cruiseMph; }, walker, get mode() { return mode; }, get action() { return action; }, doAction, discovered };

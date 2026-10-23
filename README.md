@@ -106,6 +106,7 @@ The route number is on the title screen and the pause screen.
 | On foot | **W S** walk, **A D** sidestep, **← →** turn, mouse to look, **Shift** to run |
 | **U** | switch between mph and km/h |
 | **T** | skip ahead an hour |
+| **R** | call in a thunderstorm now, or send the current one away |
 | **M** | mute |
 | **F** | fullscreen |
 | **Esc** / **P** | pause |
@@ -150,6 +151,20 @@ the game also:
   into lines across the sky while thunderheads build on the horizon. After about
   two hours of riding, the sun goes down, the crickets start and your headlight
   comes on.
+- Most summer afternoons a thunderstorm builds over the interior. You see it
+  first as a tower on the horizon. Then the sky closes over and goes grey, the
+  wind comes up, and it pours, with lightning and thunder that arrives late if
+  the strike was far away. Other trail users head home. The pavement goes dark
+  and wet, the streetlights and trail lights click on in the gloom, and once it
+  passes the frogs start up and the pavement dries out in the sun. Some days
+  stay dry.
+- Sunsets are what the storms leave behind. The sky goes from periwinkle
+  overhead through rose and coral to a burning orange band at the horizon.
+  Broken clouds light up salmon and gold from below, and thunderheads blush.
+  Turn around for the pink belt of Venus over the blue earth shadow. Lakes,
+  ponds and swamps reflect the whole sky in the ripples. After the sun goes
+  down, the afterglow fades through magenta and violet while the streetlights
+  come on.
 - At dusk, knee-high bollard lights start to glow through towns, lake parks,
   greenways and neighborhood stretches. Each throws a dim pool of warm light
   across the pavement. The woods, swamps, groves and rail beds stay dark.
@@ -185,7 +200,8 @@ the game also:
 | `src/walls.js` | procedurally painted backdrops (forest, pines, cypress, suburb, city, skyline, grove) |
 | `src/bike.js` | bike physics, collisions, cruise autopilot, the first-person bike and rider, the cycle computer |
 | `src/npc.js` | trail users and traffic |
-| `src/sky.js` | time of day, sun, sky dome with the cloud field, thunderheads, stars, vultures |
+| `src/sky.js` | time of day, sun, sky dome with the sunset and cloud field, thunderheads, stars, vultures |
+| `src/weather.js` | afternoon thunderstorms: rain, lightning, thunder, wet pavement |
 | `src/audio.js` | procedural WebAudio soundscape |
 | `src/input.js` | keyboard, mouse, touch and gamepad |
 

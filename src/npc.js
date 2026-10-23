@@ -222,7 +222,8 @@ export class NPCs {
     this.timer -= dt;
     if (this.timer <= 0) {
       this.timer = rng.range(5, 16);
-      if (this.users.length < 6 && here.type !== 'street') this.spawnUser(bike);
+      // in a downpour most people have gone home
+      if (this.users.length < 6 && here.type !== 'street' && rng.next() > (env.rain || 0) * 0.85) this.spawnUser(bike);
     }
     const tmp = this.tmp;
     for (let k = this.users.length - 1; k >= 0; k--) {

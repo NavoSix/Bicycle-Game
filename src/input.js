@@ -12,7 +12,7 @@ export class Input {
       if (e.repeat) return;
       this.keys.add(e.code);
       const map = {
-        KeyE: 'interact', KeyC: 'cruise', KeyB: 'bell', Space: 'bell', Escape: 'pause', KeyP: 'pause', KeyU: 'units', KeyH: 'help', KeyT: 'time', KeyM: 'mute', KeyF: 'fullscreen',
+        KeyE: 'interact', KeyC: 'cruise', KeyB: 'bell', Space: 'bell', Escape: 'pause', KeyP: 'pause', KeyU: 'units', KeyH: 'help', KeyT: 'time', KeyR: 'storm', KeyM: 'mute', KeyF: 'fullscreen',
         Equal: 'cruiseUp', NumpadAdd: 'cruiseUp', BracketRight: 'cruiseUp', Minus: 'cruiseDown', NumpadSubtract: 'cruiseDown', BracketLeft: 'cruiseDown',
       };
       if (map[e.code]) this.events.push(map[e.code]);

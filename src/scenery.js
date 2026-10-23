@@ -618,6 +618,10 @@ export function streetLight(b, x, z, rot) {
   b.put('cyl', 0, 0, 0, 0.09, 7, 0.09, 0, 0, 0, 0x6d6d6a);
   b.put('box', 0, 6.9, 0.9, 0.08, 0.08, 1.8, 0, 0, 0, 0x6d6d6a);
   b.put('box', 0, 6.75, 1.8, 0.3, 0.18, 0.6, 0, 0, 0, 0x6d6d6a);
+  // sodium lamp: glows orange at dusk and in storms, and lights the road below
+  b.put('lampBand', 0, 6.69, 1.85, 0.12, 0.06, 0.22, 0, 0, 0, 0xffffff);
+  b.put('lampHalo', 0, 6.66, 1.85, 0.75, 0.75, 0.75, 0, 0, 0, 0xffffff);
+  b.put('lampPool', 0, 0.06, 2.2, 4.2, 1, 4.2, 0, 0, 0, 0xffffff);
   b.clearFrame();
   b.circle(x, z, 0.2);
 }
@@ -767,7 +771,9 @@ export function telegraphPole(b, rng, x, z, rot) {
 export function lampPost(b, x, z) {
   b.put('cyl', x, 0, z, 0.07, 3.8, 0.07, 0, 0, 0, 0x1e1e1e);
   b.put('cyl', x, 0, z, 0.14, 0.5, 0.14, 0, 0, 0, 0x1e1e1e);
-  b.put('ball', x, 4.05, z, 0.26, 0.3, 0.26, 0, 0, 0, 0xf4f0e0);
+  b.put('lampBand', x, 3.8, z, 0.24, 0.45, 0.24, 0, 0, 0, 0xffffff);
+  b.put('lampHalo', x, 4.05, z, 0.6, 0.6, 0.6, 0, 0, 0, 0xffffff);
+  b.put('lampPool', x, 0.06, z, 3.2, 1, 3.2, 0, 0, 0, 0xffffff);
   b.circle(x, z, 0.15);
 }
 
