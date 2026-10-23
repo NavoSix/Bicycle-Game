@@ -104,5 +104,63 @@ export function textures() {
       g.fill();
     }
   });
+  // older asphalt: no centre line, cracks and patches
+  T.trailw = canvas(128, 512, (g, w, h) => {
+    asphalt(null)(g, w, h);
+    for (let i = 0; i < 5; i++) {
+      g.fillStyle = `rgba(30,30,32,${rng.range(0.15, 0.3)})`;
+      g.fillRect(rng.range(0, w * 0.6), rng.range(0, h), rng.range(20, 60), rng.range(20, 70));
+    }
+    g.strokeStyle = 'rgba(20,20,20,0.5)';
+    for (let i = 0; i < 6; i++) {
+      g.beginPath();
+      let x = rng.range(0, w), y = rng.range(0, h);
+      g.moveTo(x, y);
+      for (let k = 0; k < 6; k++) g.lineTo((x += rng.range(-12, 12)), (y += rng.range(4, 16)));
+      g.stroke();
+    }
+  });
+  // packed sand singletrack with a darker tread line and pine needles
+  T.dirt = canvas(128, 512, (g, w, h) => {
+    speckle(g, w, h, '#b9a47c', 0.16, 7000, rng, 3);
+    const grd = g.createLinearGradient(0, 0, w, 0);
+    grd.addColorStop(0, 'rgba(90,80,50,0.55)');
+    grd.addColorStop(0.2, 'rgba(90,80,50,0)');
+    grd.addColorStop(0.8, 'rgba(90,80,50,0)');
+    grd.addColorStop(1, 'rgba(90,80,50,0.55)');
+    g.fillStyle = grd;
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = 'rgba(120,100,70,0.35)';
+    g.fillRect(w * 0.42, 0, w * 0.16, h);
+    for (let i = 0; i < 500; i++) {
+      g.strokeStyle = `rgba(${rng.chance(0.5) ? '110,70,35' : '150,110,60'},0.6)`;
+      const x = rng.chance(0.7) ? (rng.chance(0.5) ? rng.range(0, w * 0.25) : rng.range(w * 0.75, w)) : rng.range(0, w);
+      const y = rng.range(0, h);
+      const a = rng.range(0, 3.14);
+      g.beginPath();
+      g.moveTo(x, y);
+      g.lineTo(x + Math.cos(a) * 6, y + Math.sin(a) * 6);
+      g.stroke();
+    }
+  });
+  // one carriageway of a six-lane highway (three lanes, edge lines)
+  T.road3 = canvas(256, 256, (g, w, h) => {
+    asphalt(null, true)(g, w, h);
+    g.fillStyle = '#e8e8e0';
+    g.fillRect(w / 3 - 1, 0, 3, h * 0.3);
+    g.fillRect((2 * w) / 3 - 1, 0, 3, h * 0.3);
+    g.fillRect(6, 0, 4, h);
+    g.fillStyle = '#d8b030';
+    g.fillRect(w - 10, 0, 4, h);
+  });
+  T.deck = canvas(128, 128, (g, w, h) => {
+    speckle(g, w, h, '#c4c0b6', 0.07, 2500, rng, 2);
+    g.fillStyle = 'rgba(60,60,50,0.35)';
+    g.fillRect(0, 0, w, 2);
+    g.fillStyle = 'rgba(255,255,255,0.4)';
+    g.fillRect(0, 0, 4, h);
+    g.fillRect(w - 4, 0, 4, h);
+  });
+  T.gravel = canvas(128, 128, (g, w, h) => speckle(g, w, h, '#9e978a', 0.25, 5000, rng, 3));
   return T;
 }

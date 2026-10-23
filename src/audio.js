@@ -192,9 +192,9 @@ export class Sound {
     const t = ctx.currentTime;
     this.set(this.wind.g.gain, Math.min(0.5, (v / 10) ** 2 * 0.45));
     this.set(this.wind.f.frequency, 250 + v * 90);
-    const rollG = { trail: 0.05, road: 0.06, board: 0.09, grass: 0.12 }[st.surface] || 0.05;
+    const rollG = { trail: 0.05, trailw: 0.06, concrete: 0.055, bridge: 0.055, road: 0.06, board: 0.09, dirt: 0.11, grass: 0.12 }[st.surface] || 0.05;
     this.set(this.roll.g.gain, Math.min(1, v / 6) * rollG);
-    this.set(this.roll.f.frequency, st.surface === 'grass' ? 600 : 200 + v * 25);
+    this.set(this.roll.f.frequency, st.surface === 'grass' || st.surface === 'dirt' ? 650 : 200 + v * 25);
 
     // freewheel ratchet while coasting
     if (st.coasting && v > 0.6) {
@@ -206,12 +206,13 @@ export class Sound {
       }
     } else this.nextTick = t;
 
-    // planks on the boardwalk
-    if (st.surface === 'board' && v > 0.5) {
+    // planks on the boardwalk, expansion joints in concrete
+    const joint = { board: [0.2, 180, 0.12], concrete: [4.5, 140, 0.07], bridge: [3, 140, 0.06] }[st.surface];
+    if (joint && v > 0.5) {
       if (this.nextPlank < t) this.nextPlank = t;
       while (this.nextPlank < t + 0.08) {
-        this.click(this.nextPlank, 180, 0.12, 0.04);
-        this.nextPlank += 0.2 / v;
+        this.click(this.nextPlank, joint[1], joint[2], 0.04);
+        this.nextPlank += joint[0] / v;
       }
     }
 
@@ -220,11 +221,11 @@ export class Sound {
     const near = car < 120 ? Math.min(1, (1 - car / 120) ** 2) * Math.min(1, st.carSpeed / 12) : 0;
     this.set(this.traffic.g.gain, near * 0.5 + (st.habitat === 'town' ? 0.05 : 0), 0.08);
     this.set(this.traffic.f.frequency, 200 + near * 600, 0.08);
-    this.set(this.hum.g.gain, st.habitat === 'town' ? 0.12 : st.habitat === 'street' || st.habitat === 'suburbTrail' ? 0.05 : 0.015, 1.5);
+    this.set(this.hum.g.gain, st.habitat === 'town' || st.habitat === 'lakeloop' ? 0.12 : ['street', 'suburbTrail', 'corridor'].includes(st.habitat) ? 0.05 : 0.015, 1.5);
 
     // ambience
     const day = 1 - st.night;
-    const woods = ['hammock', 'flatwoods', 'wetland', 'lake', 'grove', 'suburbTrail'].includes(st.habitat);
+    const woods = ['hammock', 'flatwoods', 'wetland', 'lake', 'grove', 'suburbTrail', 'railtrail', 'foottrail', 'corridor'].includes(st.habitat);
     const hot = st.hour > 10.5 && st.hour < 19 ? 1 : 0.3;
     const cic = woods ? 0.02 * day * hot : 0.004 * day;
     this.set(this.cicada.g.gain, cic, 2);

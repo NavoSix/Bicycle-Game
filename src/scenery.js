@@ -653,6 +653,97 @@ export function canopy(b, x, z, rot) {
   b.rect(x, z, 8, 4.5, rot);
 }
 
+// A square beam between two points (lattice towers, arches, wires' crossarms).
+const _up = new THREE.Vector3(0, 1, 0);
+const _dir = new THREE.Vector3();
+const _bq = new THREE.Quaternion();
+const _be = new THREE.Euler();
+export function beam(b, ax, ay, az, bx, by, bz, t, color) {
+  _dir.set(bx - ax, by - ay, bz - az);
+  const len = _dir.length();
+  if (len < 1e-4) return;
+  _bq.setFromUnitVectors(_up, _dir.multiplyScalar(1 / len));
+  _be.setFromQuaternion(_bq, 'YXZ');
+  b.put('box', ax, ay, az, t, len, t, _be.x, _be.y, _be.z, color);
+}
+
+// Steel lattice transmission tower, the kind that marches down Cady Way.
+export function powerTower(b, x, z, rot) {
+  const c = Math.cos(rot), s = Math.sin(rot);
+  const P = (lx, y, lz) => [x + c * lx + s * lz, y, z - s * lx + c * lz];
+  const col = 0x8e9398;
+  const H = 30;
+  const leg = (lx, lz, ux, uz, y0, y1) => {
+    const a = P(lx, y0, lz), bb = P(ux, y1, uz);
+    beam(b, a[0], a[1], a[2], bb[0], bb[1], bb[2], 0.16, col);
+  };
+  const half = (y) => 3.2 - (2.4 * y) / H;
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) leg(sx * half(0), sz * half(0), sx * half(H), sz * half(H), 0, H);
+  // cross bracing on each face
+  for (let y = 0; y < H - 4; y += 5) {
+    const h0 = half(y), h1 = half(y + 5);
+    for (const sz of [-1, 1]) {
+      leg(-h0, sz * h0, h1, sz * h1, y, y + 5);
+      leg(h0, sz * h0, -h1, sz * h1, y, y + 5);
+    }
+    for (const sx of [-1, 1]) {
+      leg(sx * h0, -h0, sx * h1, h1, y, y + 5);
+      leg(sx * h0, h0, sx * h1, -h1, y, y + 5);
+    }
+  }
+  // crossarms with insulators
+  const arms = [];
+  for (const [y, w] of [[H - 6, 8], [H - 1, 6]]) {
+    const a = P(-w, y, 0), bb = P(w, y, 0);
+    beam(b, a[0], a[1], a[2], bb[0], bb[1], bb[2], 0.3, col);
+    for (const k of [-w + 0.4, w - 0.4]) {
+      const q = P(k, y - 1.6, 0);
+      b.put('cyl', q[0], q[1], q[2], 0.1, 1.6, 0.1, 0, 0, 0, 0x5a6a7a);
+      arms.push(q);
+    }
+  }
+  b.circle(x, z, 3.6);
+  return arms;
+}
+
+// Creosoted pole with crossarms, left over from the railroad.
+export function telegraphPole(b, rng, x, z, rot) {
+  const lean = rng.range(-0.06, 0.06);
+  b.setFrame(x, 0, z, rot);
+  b.put('cyl', 0, 0, 0, 0.14, 8, 0.14, lean, 0, 0, 0x4a3a2c);
+  for (const y of [7.2, 6.4]) {
+    if (y < 7 && rng.chance(0.4)) continue;
+    b.put('box', 0, y + lean * 0, lean * y, 0.12, 0.12, 2.2, 0, Math.PI / 2, 0, 0x55463a);
+    for (const k of [-0.9, -0.4, 0.4, 0.9]) b.put('cyl', k, y + 0.12, lean * y, 0.05, 0.16, 0.05, 0, 0, 0, 0x5a8a7a);
+  }
+  b.clearFrame();
+  b.circle(x, z, 0.25);
+}
+
+export function lampPost(b, x, z) {
+  b.put('cyl', x, 0, z, 0.07, 3.8, 0.07, 0, 0, 0, 0x1e1e1e);
+  b.put('cyl', x, 0, z, 0.14, 0.5, 0.14, 0, 0, 0, 0x1e1e1e);
+  b.put('ball', x, 4.05, z, 0.26, 0.3, 0.26, 0, 0, 0, 0xf4f0e0);
+  b.circle(x, z, 0.15);
+}
+
+export function fountain(b, rng, x, z) {
+  // the aerating fountains that keep city lakes fresh
+  b.put('cone', x, 0, z, 1.0, 3.2, 1.0, 0, 0, 0, 0xf4f8fa);
+  b.put('blob', x, 0.05, z, 2.6, 0.5, 2.6, 0, rng.range(0, 6), 0, 0xe8f0f2);
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * Math.PI * 2;
+    b.put('cone', x + Math.sin(a) * 0.9, 0, z + Math.cos(a) * 0.9, 0.3, rng.range(1.6, 2.4), 0.3, Math.cos(a) * 0.35, 0, -Math.sin(a) * 0.35, 0xeef4f6);
+  }
+}
+
+export function fallenLog(b, rng, x, z, rot) {
+  const len = rng.range(3, 7);
+  b.setFrame(x, 0.18, z, rot);
+  b.put('cyl', -len / 2, 0, 0, 0.22, len, 0.22, 0, 0, -Math.PI / 2, 0x6a5440);
+  b.clearFrame();
+}
+
 // ---------------------------------------------------------------------------
 // Text signs (separate meshes with canvas textures)
 // ---------------------------------------------------------------------------
@@ -703,7 +794,7 @@ export function textSign(tex, width, height, elevation, posts = 2, wood = false)
   board.position.y = elevation + height / 2;
   board.castShadow = true;
   g.add(board);
-  const px = posts === 1 ? [0] : [-width * 0.35, width * 0.35];
+  const px = posts === 0 ? [] : posts === 1 ? [0] : [-width * 0.35, width * 0.35];
   for (const x of px) {
     const p = new THREE.Mesh(postGeo, wood ? brownPost : postMat);
     p.scale.set(wood ? 1.6 : 1, elevation + height, wood ? 1.6 : 1);

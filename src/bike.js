@@ -4,7 +4,7 @@ import { STEP } from './path.js';
 const MASS = 85;
 const G = 9.81;
 const WHEELBASE = 1.05;
-const CRR = { trail: 0.005, road: 0.0048, board: 0.009, grass: 0.032 };
+const CRR = { trail: 0.005, trailw: 0.0056, concrete: 0.0055, bridge: 0.0055, road: 0.0048, board: 0.009, dirt: 0.014, grass: 0.032 };
 const RADIUS = 0.4;
 const UP = new THREE.Vector3(0, 1, 0);
 const _a = new THREE.Vector3();
@@ -259,23 +259,42 @@ export class Bike {
     let throttle = inp.throttle;
     let steerCmd = inp.steer;
     if (this.cruise) {
-      let lane = near.surf === 'road' ? 2.2 : near.surf === 'board' ? 0.6 : 0.85;
-      if (env.laneOffset) lane = env.laneOffset(this.s, lane);
-      const L = 5 + this.v * 1.3;
+      let lane = near.surf === 'road' ? 2.2 : near.surf === 'board' ? 0.6 : near.surf === 'dirt' ? 0 : Math.min(0.85, near.w / 2 - 0.6);
+      if (env.laneOffset && near.surf !== 'dirt') lane = env.laneOffset(this.s, lane);
+      // swing around bollards and posts standing in the trail
+      for (const list of this.world.colliders(Math.floor(this.s / 100))) {
+        for (const c of list) {
+          if (c.t !== 'c' || c.r > 0.6) continue;
+          const dx = c.x - this.x, dz = c.z - this.z;
+          if (dx * dx + dz * dz > 400) continue;
+          const cn = path.nearest(c.x, c.z, this.s, 12);
+          const ahead = (cn.s - this.s) * STEP;
+          if (ahead > -1 && ahead < 16 && Math.abs(cn.lat - lane) < c.r + 0.75) lane = cn.lat + (lane >= cn.lat ? 1 : -1) * (c.r + 0.8);
+        }
+      }
+      const L = near.surf === 'dirt' ? 3 + this.v * 0.8 : 5 + this.v * 1.3;
       const tp = path.sample(this.s + L / STEP, lane);
       const want = Math.atan2(tp.x - this.x, tp.z - this.z);
       const err = wrap(want - this.h);
-      if (Math.abs(inp.steer) < 0.05) steerCmd = Math.max(-1, Math.min(1, -err * 2.4));
-      const target = env.cruiseSpeed || 6.7;
-      const hold = 0.3 * this.v ** 3 + CRR[surf] * MASS * G * this.v;
-      const p = Math.max(0, Math.min(320, hold + (target - this.v) * 450));
+      if (Math.abs(inp.steer) < 0.05) {
+        // pure pursuit: the steering angle that arcs onto the lookahead point
+        const want = Math.atan((2 * WHEELBASE * Math.sin(err)) / L);
+        steerCmd = Math.max(-1, Math.min(1, -want / (0.6 / (1 + this.v * 0.33))));
+      }
+      // ease off on sand and twisty singletrack
+      const target = surf === 'dirt' ? 4.6 : env.cruiseSpeed || 6.7;
+      const climb = onSurf ? Math.max(0, near.grade) * MASS * G * this.v : 0;
+      const hold = 0.3 * this.v ** 3 + CRR[surf] * MASS * G * this.v + climb;
+      const p = Math.max(0, Math.min(380, hold + (target - this.v) * 450));
       throttle = Math.max(throttle, p / 210);
     }
 
     // --- longitudinal ------------------------------------------------------
     const power = throttle * (inp.sprint ? 400 : 210);
     const drive = power / Math.max(this.v, 1.4);
-    const resist = 0.3 * this.v * this.v + (this.v > 0.05 ? CRR[surf] * MASS * G : 0);
+    // gravity along the slope (bridge ramps, boardwalk ramps)
+    const grade = onSurf ? near.grade * Math.cos(wrap(this.h - near.h)) : 0;
+    const resist = 0.3 * this.v * this.v + (this.v > 0.05 ? CRR[surf] * MASS * G : 0) + MASS * G * grade;
     const brake = inp.brake * MASS * 4.5;
     this.v += ((drive - resist - (this.v > 0 ? brake : 0)) / MASS) * dt;
     if (this.v < 0) this.v = 0;
@@ -297,7 +316,7 @@ export class Bike {
 
     // --- boardwalk rails ---------------------------------------------------
     const n2 = path.nearest(this.x, this.z, this.s, 8);
-    if (n2.surf === 'board' && n2.p.y > 0.3 && Math.abs(n2.lat) > n2.w / 2 - 0.42 && Math.abs(n2.lat) < n2.w / 2 + 1.5) {
+    if ((n2.surf === 'board' || n2.surf === 'bridge') && n2.p.y > 0.3 && Math.abs(n2.lat) > n2.w / 2 - 0.42 && Math.abs(n2.lat) < n2.w / 2 + 1.5) {
       const over = Math.abs(n2.lat) - (n2.w / 2 - 0.42);
       const sgn = Math.sign(n2.lat);
       this.x -= -Math.cos(n2.h) * over * sgn;
@@ -370,7 +389,7 @@ export class Bike {
       this.pitch += (-0.14 - this.pitch) * k;
     }
     const bob = this.pedal * Math.min(1, this.v / 3);
-    const vib = surf === 'board' ? 0.004 : surf === 'grass' ? 0.012 : 0.0012;
+    const vib = { board: 0.004, grass: 0.012, dirt: 0.007, trailw: 0.002 }[surf] || 0.0012;
     const shake = vib * Math.min(1, this.v / 4);
     const cam = this.camera;
     cam.position.set(
@@ -443,10 +462,10 @@ export class Bike {
     g.font = 'bold 24px "Courier New", monospace';
     g.fillText(info.speedUnit, W - 8, 98);
     g.textAlign = 'left';
-    g.font = 'bold 30px "Courier New", monospace';
-    g.fillText(info.dist, 10, 146);
+    g.font = 'bold 25px "Courier New", monospace';
+    g.fillText(info.dist, 8, 146);
     g.textAlign = 'right';
-    g.fillText(info.clock, W - 10, 146);
+    g.fillText(info.clock, W - 8, 146);
     g.font = 'bold 26px "Courier New", monospace';
     g.textAlign = 'left';
     g.fillText(info.ride, 10, 180);

@@ -19,9 +19,30 @@ const CURVE = {
   wetland: { amp: 0.012, every: [30, 90], bend: 0 },
   lake: { amp: 0.009, every: [40, 140], bend: 0 },
   grove: { amp: 0.003, every: [100, 250], bend: 0 },
+  lakeloop: { amp: 0.007, every: [50, 160], bend: 0 },
+  corridor: { amp: 0.0025, every: [120, 320], bend: 0 },
+  railtrail: { amp: 0.0012, every: [200, 500], bend: 0 },
+  foottrail: { amp: 0.022, every: [10, 40], bend: 0 },
 };
 
-const CROSSING_TYPES = ['suburbTrail', 'town', 'grove', 'flatwoods'];
+// surface name -> width
+export const WIDTH = { road: 7.2, trail: 3.6, trailw: 3.1, concrete: 3.0, dirt: 1.3, board: 3.4, bridge: 4.0 };
+
+// Long structures that need a straight run of trail.
+//   bridge – pedestrian bridge over a six-lane highway (Cady Way over SR 436)
+//   over   – an expressway overpass above the trail (the 408 at Lake Underhill)
+const EVENTS = {
+  corridor: [['bridge', 0.55], ['over', 0.3]],
+  suburbTrail: [['bridge', 0.2], ['over', 0.15]],
+  town: [['bridge', 0.3], ['over', 0.3]],
+  railtrail: [['bridge', 0.25], ['over', 0.25]],
+  lakeloop: [['over', 1.0]],
+};
+const EVENT_LEN = { bridge: 236, over: 60 };
+const BRIDGE_H = 6.4;
+const RAMP = 100;
+
+const CROSSING_TYPES = ['suburbTrail', 'town', 'grove', 'flatwoods', 'railtrail', 'corridor', 'lakeloop'];
 
 export class Path {
   constructor(seed) {
@@ -39,12 +60,22 @@ export class Path {
     this.curvLeft = 40;
     this.w = 7.2;
     this.board = null;
+    this.ev = null;
+    this.nextEvent = 1800;
     this.nextCross = 1500;
+    this.straightFrom = 0;
     this.straightUntil = 60;
   }
 
   ensure(i) {
     while (this.pts.length <= i) this.step();
+  }
+
+  straighten(from, until) {
+    if (from > this.straightUntil) {
+      this.straightFrom = from;
+      this.straightUntil = until;
+    } else this.straightUntil = Math.max(this.straightUntil, until);
   }
 
   step() {
@@ -55,31 +86,81 @@ export class Path {
     const type = region.type;
     const cfg = CURVE[type];
 
+    // --- plan big structures ------------------------------------------------
+    if (!this.ev && d >= this.nextEvent) {
+      const opts = EVENTS[type];
+      this.nextEvent = d + (type === 'lakeloop' && !region.over ? 60 : rng.range(500, 1500));
+      if (opts) {
+        for (const [kind, p] of opts) {
+          const len = EVENT_LEN[kind];
+          const start = d + 80;
+          // the 408 crosses each lake loop once, near the middle
+          if (type === 'lakeloop' && (region.over || d < region.start + region.len * 0.3)) break;
+          if (rng.chance(p) && region.end - start > len + 80 && !this.board) {
+            this.ev = { kind, start, end: start + len, seed: hash(this.seed, i, 31) };
+            if (type === 'lakeloop') region.over = true;
+            this.straighten(d, start + len + 40);
+            this.nextCross = Math.max(this.nextCross, start + len + 150);
+            break;
+          }
+        }
+      }
+    }
+
     // --- surface + width --------------------------------------------------
-    let surf = type === 'street' ? 'road' : 'trail';
-    if (type === 'wetland' && !this.board && d > region.start + 40 && region.end - d > 140 && rng.chance(0.03)) {
-      const len = Math.min(rng.range(80, 260), region.end - d - 30);
-      this.board = { start: d, end: d + len };
+    let surf = region.surf;
+    // boardwalks: long ones in the swamp, short footbridges over creeks elsewhere
+    const creeky = type === 'foottrail' || type === 'railtrail' || type === 'hammock';
+    if (!this.board && !this.ev && d > region.start + 40) {
+      if (type === 'wetland' && region.end - d > 140 && rng.chance(0.03)) {
+        const len = Math.min(rng.range(80, 260), region.end - d - 30);
+        this.board = { start: d, end: d + len, h: 0.72, ramp: 12, creek: false };
+      } else if (creeky && region.end - d > 80 && rng.chance(type === 'foottrail' ? 0.012 : 0.004)) {
+        const len = rng.range(type === 'railtrail' ? 24 : 10, type === 'railtrail' ? 44 : 22);
+        this.board = { start: d, end: d + len, h: type === 'railtrail' ? 0.9 : 0.45, ramp: type === 'railtrail' ? 2 : 3, creek: true };
+        this.straighten(d - 10, d + len + 10);
+      }
     }
     let y = surf === 'road' ? 0.04 : 0.06;
+    let creek = false;
     if (this.board) {
       if (d >= this.board.end) this.board = null;
       else {
         surf = 'board';
         const s = d - this.board.start;
         const len = this.board.end - this.board.start;
-        y = 0.06 + 0.72 * smooth(0, 12, s) * smooth(0, 12, len - s);
+        y = 0.06 + this.board.h * smooth(0, this.board.ramp, s) * smooth(0, this.board.ramp, len - s);
+        creek = this.board.creek;
       }
     }
-    const wTarget = surf === 'road' ? 7.2 : surf === 'board' ? 3.4 : 3.6;
+    let cross = null;
+    if (this.ev) {
+      const ev = this.ev;
+      if (d >= ev.end) this.ev = null;
+      else if (d >= ev.start) {
+        const s = d - ev.start;
+        const len = ev.end - ev.start;
+        const mid = Math.abs(s - len / 2) < STEP / 2 + 1e-6 && !ev.placed;
+        if (ev.kind === 'bridge') {
+          surf = 'bridge';
+          y = 0.06 + BRIDGE_H * smooth(0, RAMP, s) * smooth(0, RAMP, len - s);
+        }
+        if (mid) {
+          ev.placed = true;
+          cross = { kind: ev.kind === 'bridge' ? 'highway' : 'over', i, x: this.x, z: this.z, h: this.h, region: region.index, d, seed: ev.seed };
+          this.crossings.push(cross);
+        }
+      }
+    }
+    const wTarget = surf === 'board' && region.surf === 'dirt' ? 1.6 : WIDTH[surf];
     this.w += Math.max(-0.12, Math.min(0.12, wTarget - this.w));
 
     // --- crossings ----------------------------------------------------------
-    let cross = null;
-    if (d >= this.nextCross - 40 && this.straightUntil < this.nextCross + 40) this.straightUntil = this.nextCross + 40;
-    if (d >= this.nextCross) {
-      if (CROSSING_TYPES.includes(type) && surf === 'trail' && d - region.start > 60 && region.end - d > 60) {
-        cross = { i, x: this.x, z: this.z, h: this.h, region: region.index, d, seed: hash(this.seed, i, 9) };
+    if (d >= this.nextCross - 40) this.straighten(this.nextCross - 40, this.nextCross + 40);
+    if (d >= this.nextCross && !cross) {
+      const flat = surf === 'trail' || surf === 'trailw' || surf === 'concrete';
+      if (CROSSING_TYPES.includes(type) && flat && !this.ev && d - region.start > 60 && region.end - d > 60) {
+        cross = { kind: 'road', i, x: this.x, z: this.z, h: this.h, region: region.index, d, seed: hash(this.seed, i, 9) };
         this.crossings.push(cross);
       }
       this.nextCross = d + (type === 'town' ? rng.range(300, 600) : rng.range(450, 1100));
@@ -101,11 +182,12 @@ export class Path {
     const off = this.h - this.base;
     if (off > 0.75) target = -Math.abs(target) - 0.004;
     if (off < -0.75) target = Math.abs(target) + 0.004;
-    if (d < this.straightUntil && d > this.straightUntil - 120) target = 0;
-    const slew = d < this.straightUntil ? 0.004 : 0.0012;
+    const straight = d >= this.straightFrom && d < this.straightUntil;
+    if (straight) target = 0;
+    const slew = straight ? 0.004 : type === 'foottrail' ? 0.003 : 0.0012;
     this.curv += Math.max(-slew, Math.min(slew, target - this.curv));
 
-    const p = { x: this.x, y, z: this.z, h: this.h, w: this.w, surf, d, r: region.index, type, cross };
+    const p = { x: this.x, y, z: this.z, h: this.h, w: this.w, surf, d, r: region.index, type, cross, creek };
     this.pts.push(p);
 
     this.h += this.curv * STEP;
@@ -163,8 +245,9 @@ export class Path {
     best.lat = (x - best.px) * -Math.cos(h) + (z - best.pz) * Math.sin(h);
     best.h = h;
     best.y = a.y + (b.y - a.y) * best.t;
+    best.grade = (b.y - a.y) / STEP;
     best.w = a.w + (b.w - a.w) * best.t;
-    best.surf = a.surf;
+    best.surf = best.t < 0.5 ? a.surf : b.surf;
     best.p = a;
     return best;
   }
@@ -182,3 +265,6 @@ export class Path {
     return m;
   }
 }
+
+// Half-width of the road a crossing carries (for keeping scenery off it).
+export const CROSS_HALF = { road: 4.5, highway: 15, over: 13 };

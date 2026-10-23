@@ -12,9 +12,15 @@ import { RNG, hash } from './rng.js';
 //   wetland     – boardwalks over cypress swamp and creek
 //   lake        – open lakeshore on one side
 //   grove       – rows of citrus trees
+//   lakeloop    – a concrete path hugging an urban lake, under an expressway
+//                 (Lake Underhill and the 408)
+//   corridor    – a greenway down a power-line corridor (Cady Way, Little Econ)
+//   railtrail   – an arrow-straight old rail bed with ditches and trestles
+//                 (Cross Seminole, Flagler, West Orange)
+//   foottrail   – sand singletrack with orange blazes (Florida National Scenic Trail)
 
-export const DEVELOPED = ['street', 'suburbTrail', 'town'];
-export const NATURAL = ['hammock', 'flatwoods', 'wetland', 'lake', 'grove'];
+export const DEVELOPED = ['street', 'suburbTrail', 'town', 'lakeloop', 'corridor'];
+export const NATURAL = ['hammock', 'flatwoods', 'wetland', 'lake', 'grove', 'railtrail', 'foottrail'];
 
 const TOWNS = [
   ['Winter Park', 'Orange County'],
@@ -71,6 +77,22 @@ const NATURE = {
     'Lake Maitland', 'Lake Virginia', 'Lake Baldwin', 'Lake Underhill', 'Lake Lotus',
     'Lake Brantley', 'Lake Kathryn', 'Red Bug Lake', 'Lake Orienta', 'Lake Hodge',
   ],
+  lakeloop: [
+    'Lake Underhill', 'Lake Baldwin', 'Lake Davis', 'Lake Lawsona', 'Lake Formosa', 'Lake Cherokee',
+    'Lake Druid', 'Lake Susannah', 'Lake Barton', 'Lake Como', 'Lake Copeland', 'Lake Rowena',
+  ],
+  corridor: [
+    'Cady Way Trail', 'Baldwin Park', 'Little Econ Greenway', 'Seminole Wekiva Trail', 'Shingle Creek Trail',
+    'Orlando Urban Trail', 'Gaston Edwards Trail', 'Cady Way Trail · Winter Park', 'Dinky Line',
+  ],
+  railtrail: [
+    'Cross Seminole Trail', 'Black Hammock', 'Flagler Trail', 'West Orange Trail', 'Old Orange Belt Line',
+    'Seminole Wekiva Trail', 'Oviedo Rail Bed', 'Lake Jesup Rail Bed', 'Sanford Spur',
+  ],
+  foottrail: [
+    'Florida National Scenic Trail', 'Florida Trail · Econ River', 'Kolokee Loop', 'Florida Trail · Bronson Forest',
+    'Florida Trail · Tosohatchee', 'Florida Trail · Seminole Ranch', 'Florida Trail · Wekiva', 'Florida Trail · Chuluota',
+  ],
   grove: [
     'Slavia Groves', 'Geneva Groves', 'Chuluota Groves', 'Black Hammock Groves',
     'Old Celery Fields', 'Plymouth Groves', 'Lukas Grove', 'Snow Hill Groves',
@@ -83,6 +105,10 @@ const SUBTITLE = {
   wetland: 'Boardwalk',
   lake: 'Lakeshore',
   grove: 'Citrus grove',
+  lakeloop: 'Lake loop · under the 408',
+  corridor: 'Greenway',
+  railtrail: 'Old rail bed',
+  foottrail: 'Orange blazes',
 };
 
 const LENGTH = {
@@ -94,6 +120,10 @@ const LENGTH = {
   wetland: [700, 1500],
   lake: [900, 2000],
   grove: [800, 1600],
+  lakeloop: [1200, 2200],
+  corridor: [1400, 3000],
+  railtrail: [1600, 3400],
+  foottrail: [800, 1700],
 };
 
 export class RegionPlan {
@@ -111,6 +141,12 @@ export class RegionPlan {
   push(r) {
     const start = this.list.length ? this.list[this.list.length - 1].end : 0;
     r.index = this.list.length;
+    if (!r.surf) {
+      // pavement varies: fresh asphalt with a centre line, older unstriped asphalt, concrete
+      const k = this.rng.next();
+      r.surf = { street: 'road', lakeloop: 'concrete', railtrail: 'trailw', foottrail: 'dirt', corridor: 'trail' }[r.type]
+        || (r.type === 'town' ? (k < 0.5 ? 'concrete' : 'trail') : k < 0.3 ? 'trailw' : 'trail');
+    }
     r.start = start;
     r.end = start + r.len;
     this.list.push(r);
@@ -125,12 +161,12 @@ export class RegionPlan {
     let type;
     for (let tries = 0; tries < 10; tries++) {
       const pool = rng.chance(wasDeveloped ? 0.75 : 0.35) ? (wasDeveloped ? NATURAL : DEVELOPED) : wasDeveloped ? DEVELOPED : NATURAL;
-      type = pool === DEVELOPED ? rng.pick(['suburbTrail', 'suburbTrail', 'town', 'street']) : rng.pick(NATURAL);
+      type = pool === DEVELOPED ? rng.pick(['suburbTrail', 'suburbTrail', 'town', 'street', 'lakeloop', 'corridor', 'corridor']) : rng.pick(NATURAL);
       if (type !== prev.type) break;
     }
     const len = rng.range(...LENGTH[type]);
     let name, sub, sign;
-    if (DEVELOPED.includes(type)) {
+    if (DEVELOPED.includes(type) && NATURE[type] === undefined) {
       let t;
       for (let i = 0; i < 12; i++) {
         t = rng.pick(TOWNS);

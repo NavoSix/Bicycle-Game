@@ -1,6 +1,7 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { RNG } from './rng.js';
 import { STEP } from './path.js';
+import { lakeSide } from './world.js';
 
 const SKIN = [0xf1c8a8, 0xd9a882, 0xb07a55, 0x8a5a3a, 0x5e3d28];
 const SHIRT = [0xd23b3b, 0x2f6fb5, 0xf0f0f0, 0x2a2a2a, 0xf2c230, 0x3aa065, 0xe86fa0, 0x6a4aa0, 0xff8a2a, 0x57c4d8];
@@ -148,6 +149,12 @@ export class NPCs {
     this.path.ensure(Math.ceil(s) + 2);
     const p = this.path.pts[Math.floor(s)];
     if (p.surf === 'road' || p.type === 'street') return;
+    if (p.type === 'foottrail') {
+      // only hikers out on the Florida Trail
+      kind = 'hiker';
+      speed = Math.sign(speed) * rng.range(1.0, 1.4);
+      lat = Math.sign(lat) * 0.25;
+    }
     const e = { kind, speed, lat, s, phase: rng.range(0, 6), wave: 0 };
     if (kind === 'cyclist') {
       const m = cyclistModel(rng);
@@ -157,6 +164,7 @@ export class NPCs {
       const m = person(rng, false);
       e.g = m.g;
       e.p = m;
+      if (kind === 'hiker') part(boxC, rng.pick([0x8a3a2a, 0x2a4a6a, 0x4a5a2a, 0xd8862a]), 0.34, 0.5, 0.2, 0, 0.3, -0.2, m.torso);
       if (kind === 'walker' && rng.chance(0.35)) {
         // a dog on a leash
         const dog = new THREE.Group();
@@ -178,6 +186,12 @@ export class NPCs {
     let lat, speed, ds;
     if (region === 'street') {
       [lat, speed, ds] = [-1.9, -rng.range(8, 11), rng.range(120, 200)];
+    } else if (region === 'lakeloop') {
+      const land = -lakeSide(this.path.regions.list[this.path.pts[Math.floor(bike.s)].r]);
+      const same = rng.chance(0.5);
+      lat = same ? (land > 0 ? 15.25 : -11.75) : land > 0 ? 11.75 : -15.25;
+      speed = (same ? 1 : -1) * rng.range(11, 15);
+      ds = same ? rng.range(-150, 200) : rng.range(120, 240);
     } else {
       const lane = rng.int(0, 3);
       lat = [-7.4, -10.2, -13.3, -16.1][lane];
@@ -262,9 +276,9 @@ export class NPCs {
     // ---- cars along the path (street + town road) -------------------------
     this.carTimer -= dt;
     if (this.carTimer <= 0) {
-      if (here.type === 'town') {
-        this.carTimer = rng.range(1.2, 3.5);
-        if (this.cars.length < 14) this.spawnPathCar(bike, 'town');
+      if (here.type === 'town' || here.type === 'lakeloop') {
+        this.carTimer = here.type === 'town' ? rng.range(1.2, 3.5) : rng.range(3, 7);
+        if (this.cars.length < 14) this.spawnPathCar(bike, here.type);
       } else if (here.type === 'street') {
         this.carTimer = rng.range(10, 25);
         if (this.cars.length < 3) this.spawnPathCar(bike, 'street');
@@ -307,12 +321,15 @@ export class NPCs {
       const rel = (cr.i - bike.s) * STEP;
       if (rel < -150 || rel > 260) continue;
       cr.timer = (cr.timer ?? rng.range(0, 4)) - dt;
-      if (cr.timer <= 0 && this.crossCars.length < 8) {
-        cr.timer = rng.range(4, 12);
+      if (cr.timer <= 0 && this.crossCars.length < 24) {
+        const big = cr.kind !== 'road';
+        cr.timer = big ? rng.range(0.6, 2.4) : rng.range(4, 12);
         const dir = rng.sign();
         const g = carModel(rng);
         this.scene.add(g);
-        this.crossCars.push({ g, cr, dir, u: -dir * 130, v: rng.range(12, 17), cruise: 0 });
+        const reach = big ? 200 : 130;
+        const lane = big ? rng.pick([3.3, 7.0, 10.7]) : 1.9;
+        this.crossCars.push({ g, cr, dir, lane, reach, u: -dir * reach, v: big ? rng.range(22, 29) : rng.range(12, 17), cruise: 0 });
       }
     }
     for (let k = this.crossCars.length - 1; k >= 0; k--) {
@@ -320,7 +337,7 @@ export class NPCs {
       if (!c.cruise) c.cruise = c.v;
       const cr = c.cr;
       const rel = (cr.i - bike.s) * STEP;
-      const playerNear = rel > -4 && rel < 30 && Math.abs(bikeLat) < 30;
+      const playerNear = cr.kind === 'road' && rel > -4 && rel < 30 && Math.abs(bikeLat) < 30;
       const toLine = -c.dir * c.u - 7.5; // metres until the stop point
       let want = c.cruise;
       if (playerNear && toLine > -1 && toLine < 40) want = Math.max(0, Math.min(c.cruise, toLine * 0.9));
@@ -328,10 +345,10 @@ export class NPCs {
       c.u += c.dir * c.v * dt;
       const rx = -Math.cos(cr.h), rz = Math.sin(cr.h);
       const fx = Math.sin(cr.h), fz = Math.cos(cr.h);
-      const lane = -c.dir * 1.9;
+      const lane = -c.dir * c.lane;
       const x = cr.x + rx * c.u + fx * lane;
       const z = cr.z + rz * c.u + fz * lane;
-      c.g.position.set(x, 0.06, z);
+      c.g.position.set(x, cr.kind === 'over' ? 7.45 : 0.06, z);
       c.g.rotation.y = cr.h + (c.dir > 0 ? -Math.PI / 2 : Math.PI / 2);
       c.g.userData.head.color.setScalar(0.85 + night * 0.15);
       c.g.userData.tail.color.setRGB(0.4 + night * 0.6, 0.05, 0.05);
@@ -340,7 +357,7 @@ export class NPCs {
         closest = d;
         closestV = c.v;
       }
-      if (Math.abs(c.u) > 135 || rel < -170 || rel > 300) {
+      if (Math.abs(c.u) > c.reach + 5 || rel < -170 || rel > 300) {
         this.scene.remove(c.g);
         this.crossCars.splice(k, 1);
       }

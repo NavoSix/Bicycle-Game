@@ -7,6 +7,7 @@ import { NPCs } from './npc.js';
 import { Sound } from './audio.js';
 import { Input } from './input.js';
 import { textures } from './textures.js';
+import { lightWalls } from './walls.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -152,6 +153,7 @@ function frame() {
     bike.pitch = -0.05;
     sky.update(dt, hours, camera);
   }
+  lightWalls(sky.pal, sky.night);
   renderer.render(scene, camera);
 }
 
