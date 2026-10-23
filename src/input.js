@@ -6,13 +6,15 @@ export class Input {
     this.lookY = 0;
     this.lastLook = -10;
     this.events = [];
-    this.touch = null;
     this.canvas = canvas;
 
     addEventListener('keydown', (e) => {
       if (e.repeat) return;
       this.keys.add(e.code);
-      const map = { KeyC: 'cruise', KeyB: 'bell', Space: 'bell', Escape: 'pause', KeyP: 'pause', KeyU: 'units', KeyH: 'help', KeyT: 'time', KeyM: 'mute', KeyF: 'fullscreen' };
+      const map = {
+        KeyC: 'cruise', KeyB: 'bell', Space: 'bell', Escape: 'pause', KeyP: 'pause', KeyU: 'units', KeyH: 'help', KeyT: 'time', KeyM: 'mute', KeyF: 'fullscreen',
+        Equal: 'cruiseUp', NumpadAdd: 'cruiseUp', BracketRight: 'cruiseUp', Minus: 'cruiseDown', NumpadSubtract: 'cruiseDown', BracketLeft: 'cruiseDown',
+      };
       if (map[e.code]) this.events.push(map[e.code]);
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab'].includes(e.code)) e.preventDefault();
     });
@@ -34,19 +36,6 @@ export class Input {
     addEventListener('mouseup', () => (this.dragging = false));
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    // touch: hold to pedal, horizontal position steers, two fingers brake
-    const t = (e) => {
-      e.preventDefault();
-      if (e.touches.length === 0) {
-        this.touch = null;
-        return;
-      }
-      const tt = e.touches[0];
-      this.touch = { x: (tt.clientX / innerWidth) * 2 - 1, n: e.touches.length };
-    };
-    canvas.addEventListener('touchstart', t, { passive: false });
-    canvas.addEventListener('touchmove', t, { passive: false });
-    canvas.addEventListener('touchend', t, { passive: false });
     this.padPrev = {};
   }
 
@@ -60,11 +49,15 @@ export class Input {
     this.lookX = this.lookY = 0;
     let analog = false;
 
-    if (this.touch) {
-      if (this.touch.n >= 2) brake = 1;
-      else throttle = 1;
-      steer = Math.max(-1, Math.min(1, this.touch.x * 1.6));
-      analog = true;
+    // on-screen touch controls (see touch.js)
+    const tu = this.touchUI;
+    if (tu && tu.active) {
+      throttle = Math.max(throttle, tu.pedal);
+      brake = Math.max(brake, tu.brake);
+      if (Math.abs(tu.steer) > 0.02) {
+        steer = tu.steer;
+        analog = true;
+      }
     }
 
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
@@ -95,6 +88,8 @@ export class Input {
       edge(2, 'cruise');
       edge(9, 'pause');
       edge(3, 'units');
+      edge(12, 'cruiseUp');
+      edge(13, 'cruiseDown');
       break;
     }
     const ev = this.events;

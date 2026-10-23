@@ -6,6 +6,7 @@ import { Bike } from './bike.js';
 import { NPCs } from './npc.js';
 import { Sound } from './audio.js';
 import { Input } from './input.js';
+import { TouchControls } from './touch.js';
 import { textures } from './textures.js';
 import { lightWalls } from './walls.js';
 import { lightLamps } from './scenery.js';
@@ -18,8 +19,10 @@ $('newroute').href = '?seed=' + ((Math.random() * 1e9) >>> 0);
 
 // --- renderer / scene --------------------------------------------------------
 const canvas = $('c');
+// phones and tablets: fewer pixels and a smaller shadow map keep it smooth
+const handheld = matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+renderer.setPixelRatio(Math.min(devicePixelRatio, handheld ? 1.3 : 1.75));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -38,6 +41,8 @@ bike.reset(world.start);
 const npcs = new NPCs(scene, path, seed);
 const sound = new Sound();
 const input = new Input(canvas);
+const touch = new TouchControls(canvas, input);
+if (handheld) sky.sun.shadow.mapSize.set(1024, 1024);
 
 // ground: one big plane that follows you, texture locked to world space
 const T = textures();
@@ -47,11 +52,18 @@ const ground = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1600).rotateX(-Math.
 ground.receiveShadow = true;
 scene.add(ground);
 
-addEventListener('resize', () => {
+// Keep at least ~70 degrees of horizontal view, so a phone held upright still
+// shows the trail ahead and not just a sliver of it.
+function fitCamera() {
   renderer.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight;
+  const minH = (70 * Math.PI) / 180;
+  const vForH = (2 * Math.atan(Math.tan(minH / 2) / camera.aspect) * 180) / Math.PI;
+  camera.fov = Math.min(100, Math.max(74, vForH));
   camera.updateProjectionMatrix();
-});
+}
+addEventListener('resize', fitCamera);
+fitCamera();
 
 // --- state -------------------------------------------------------------------
 let started = false;
@@ -60,6 +72,12 @@ let clock = 8.2; // hours since midnight of day one: a Saturday-morning start
 let hours = clock;
 const TIME_SCALE = 6; // one real minute = six minutes of Florida daylight
 let metric = false;
+
+// Cruise holds a set speed, adjustable in 2 mph steps up to 30 mph.
+const CRUISE_MIN = 4;
+const CRUISE_MAX = 30;
+let cruiseMph = 14;
+const cruiseLabel = () => (metric ? `${Math.round(cruiseMph * 1.609344)} km/h` : `${cruiseMph} mph`);
 
 // The moon starts at a waning half and moves on an eighth of a cycle each
 // night. The phase changes at noon, so it holds steady from dusk to dawn.
@@ -110,7 +128,10 @@ function start() {
   sound.start();
   lock();
   setTimeout(() => toast('Orlando', 'Home'), 1200);
-  setTimeout(() => note('W to pedal · C to cruise'), 3500);
+  setTimeout(() => note(touch.state.active ? 'Hold Pedal · tap Cruise' : 'W to pedal · C to cruise'), 3500);
+  if (handheld && !document.fullscreenElement) {
+    document.documentElement.requestFullscreen?.({ navigationUI: 'hide' })?.catch?.(() => {});
+  }
 }
 $('title').addEventListener('click', start);
 addEventListener('keydown', (e) => {
@@ -131,6 +152,10 @@ function setPaused(p) {
     lock();
   }
 }
+// leaving the tab or switching apps pauses the ride
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && started && !paused) setPaused(true);
+});
 let hadLock = false;
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement) hadLock = true;
@@ -163,6 +188,7 @@ function frame() {
   lightWalls(sky.pal, sky.night * (1 - 0.45 * sky.moonLight));
   // trail lights come on at dusk, a little before full dark
   lightLamps(THREE.MathUtils.smoothstep(-sky.sunDir.y, -0.07, 0.07));
+  touch.update(started && !paused, bike.cruise, cruiseLabel());
   renderer.render(scene, camera);
 }
 
@@ -183,7 +209,12 @@ function step(dt) {
     else if (e === 'fullscreen') {
       if (document.fullscreenElement) document.exitFullscreen();
       else document.documentElement.requestFullscreen?.();
-    } else if (e === 'cruise') note(bike.cruise ? 'Cruise off' : 'Cruise on');
+    } else if (e === 'cruise') note(bike.cruise ? 'Cruise off' : `Cruise on · ${cruiseLabel()}`);
+    else if (e === 'cruiseUp' || e === 'cruiseDown') {
+      cruiseMph = Math.max(CRUISE_MIN, Math.min(CRUISE_MAX, cruiseMph + (e === 'cruiseUp' ? 2 : -2)));
+      note(`Cruise ${cruiseLabel()}`);
+      ccTimer = 0;
+    }
   }
   if (paused) return;
 
@@ -194,6 +225,7 @@ function step(dt) {
     notify: note,
     thump: (a) => sound.thump(a),
     laneOffset: (s, lane) => npcs.laneOffset(s, lane),
+    cruiseSpeed: cruiseMph * 0.44704,
   };
   const r = bike.update(dt, inp, env);
   const traffic = npcs.update(dt, bike, env);
@@ -223,6 +255,7 @@ function step(dt) {
       clock: fmtClock(hours),
       ride: fmtRide(bike.rideTime),
       cruise: bike.cruise,
+      cruiseSet: metric ? Math.round(cruiseMph * 1.609344) : cruiseMph,
       night: sky.night,
     });
   }
@@ -243,9 +276,9 @@ function step(dt) {
 requestAnimationFrame(() => {
   bike.drawComputer({ speed: '0.0', speedUnit: 'mph', dist: fmtDist(0), clock: fmtClock(hours), ride: fmtRide(0), night: 0 });
   $('title').classList.remove('loading');
-  $('title').querySelector('.go').textContent = 'Click to ride';
+  $('title').querySelector('.go').textContent = handheld ? 'Tap to ride' : 'Click to ride';
 });
 frame();
 
 // handy for poking at things from the console
-window.__ride = { bike, path, world, sky, npcs, input, renderer, get hours() { return hours; }, set hours(h) { clock = Math.floor(clock / 24) * 24 + h; hours = h; }, get clock() { return clock; }, set clock(c) { clock = c; hours = c % 24; }, moonPhase };
+window.__ride = { bike, path, world, sky, npcs, input, renderer, get hours() { return hours; }, set hours(h) { clock = Math.floor(clock / 24) * 24 + h; hours = h; }, get clock() { return clock; }, set clock(c) { clock = c; hours = c % 24; }, moonPhase, get cruiseMph() { return cruiseMph; } };

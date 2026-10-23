@@ -51,6 +51,7 @@ export class Bike {
     this.phase = 0;
     this.wheel = 0;
     this.cruise = false;
+    this.passSide = new WeakMap();
     this.bump = 0;
     this.pedal = 0;
     this.rideTime = 0;
@@ -261,6 +262,8 @@ export class Bike {
     if (this.cruise) {
       let lane = near.surf === 'road' ? 2.2 : near.surf === 'board' ? 0.6 : near.surf === 'dirt' ? 0 : Math.min(0.85, near.w / 2 - 0.6);
       if (env.laneOffset && near.surf !== 'dirt') lane = env.laneOffset(this.s, lane);
+      const edge = Math.max(0, near.w / 2 - 0.45);
+      lane = Math.max(-edge, Math.min(edge, lane));
       // swing around bollards and posts standing in the trail
       for (const list of this.world.colliders(Math.floor(this.s / 100))) {
         for (const c of list) {
@@ -269,10 +272,14 @@ export class Bike {
           if (dx * dx + dz * dz > 400) continue;
           const cn = path.nearest(c.x, c.z, this.s, 12);
           const ahead = (cn.s - this.s) * STEP;
-          if (ahead > -1 && ahead < 16 && Math.abs(cn.lat - lane) < c.r + 0.75) lane = cn.lat + (lane >= cn.lat ? 1 : -1) * (c.r + 0.8);
+          if (ahead > -1 && ahead < Math.max(28, this.v * 3) && Math.abs(cn.lat - lane) < c.r + 0.75) {
+            // pick a side once and stick to it until we're past
+            if (!this.passSide.has(c)) this.passSide.set(c, near.lat >= cn.lat ? 1 : -1);
+            lane = cn.lat + this.passSide.get(c) * (c.r + 0.8);
+          }
         }
       }
-      const L = near.surf === 'dirt' ? 3 + this.v * 0.8 : 5 + this.v * 1.3;
+      const L = near.surf === 'dirt' ? 3 + this.v * 0.8 : Math.max(4, 2.5 + this.v * 1.3);
       const tp = path.sample(this.s + L / STEP, lane);
       const want = Math.atan2(tp.x - this.x, tp.z - this.z);
       const err = wrap(want - this.h);
@@ -282,10 +289,14 @@ export class Bike {
         steerCmd = Math.max(-1, Math.min(1, -want / (0.6 / (1 + this.v * 0.33))));
       }
       // ease off on sand and twisty singletrack
-      const target = surf === 'dirt' ? 4.6 : env.cruiseSpeed || 6.7;
+      const set = env.cruiseSpeed || 6.7;
+      const target = surf === 'dirt' ? Math.min(set, 4.6) : set;
       const climb = onSurf ? Math.max(0, near.grade) * MASS * G * this.v : 0;
       const hold = 0.3 * this.v ** 3 + CRR[surf] * MASS * G * this.v + climb;
-      const p = Math.max(0, Math.min(380, hold + (target - this.v) * 450));
+      // enough legs (or motor) to hold whatever speed is set, up to 30 mph
+      // plus whatever a ramp needs, so a slow cruise can still get up a trestle
+      const cap = Math.max(380, 1.35 * (0.3 * set ** 3 + CRR.trail * MASS * G * set)) + climb * 1.3 + (near.grade > 0.02 ? near.grade * MASS * G * 1.5 : 0);
+      const p = Math.max(0, Math.min(cap, hold + (target - this.v) * 450));
       throttle = Math.max(throttle, p / 210);
     }
 
@@ -471,7 +482,7 @@ export class Bike {
     g.fillText(info.ride, 10, 180);
     if (info.cruise) {
       g.textAlign = 'right';
-      g.fillText('CRUISE', W - 10, 180);
+      g.fillText('CRZ ' + info.cruiseSet, W - 10, 180);
     }
     this.ccTex.needsUpdate = true;
   }

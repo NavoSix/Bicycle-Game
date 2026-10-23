@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0d120f" />
   <title>Cross Seminole</title>
   <meta name="description" content="A long, quiet first-person bike ride from an Orlando cul-de-sac out across central Florida." />
   <style>
@@ -12,7 +15,7 @@
       --accent: #e9b949;
     }
     * { box-sizing: border-box; }
-    html, body { margin: 0; height: 100%; overflow: hidden; background: #0d120f; color: var(--ink); font-family: Georgia, 'Times New Roman', serif; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #0d120f; color: var(--ink); font-family: Georgia, 'Times New Roman', serif; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
     canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
     .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
     #title { background: linear-gradient(180deg, rgba(10,14,12,0.15) 0%, rgba(10,14,12,0.55) 70%, rgba(10,14,12,0.75) 100%); pointer-events: auto; cursor: pointer; transition: opacity 1.2s ease; flex-direction: column; text-align: center; padding: 16px; }
@@ -41,6 +44,39 @@
       #toast { left: 16px; bottom: 24px; }
       .keys { font-size: 12px; }
     }
+    /* ---- touch controls (phones and tablets) ---- */
+    .touch-only { display: none; }
+    body.touch .touch-only { display: block; }
+    body.touch .desk-only { display: none; }
+    #touchui { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.6s; font-family: system-ui, sans-serif; }
+    #touchui.show { opacity: 1; }
+    #touchui.show.idle { opacity: 0.35; }
+    #touchui.show .tc, #touchui.show .tbtn { pointer-events: auto; }
+    #touchui .tc { position: absolute; touch-action: none; }
+    .tbtn { pointer-events: none; touch-action: none; color: var(--ink); background: rgba(16,22,18,0.38); border: 1.5px solid rgba(246,241,228,0.55); border-radius: 999px; font: 600 13px system-ui, sans-serif; letter-spacing: 0.06em; text-transform: uppercase; display: flex; align-items: center; justify-content: center; padding: 0; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+    .tbtn.on { background: rgba(246,241,228,0.35); }
+    .tbtn.small { width: 46px; height: 46px; font-size: 20px; text-transform: none; letter-spacing: 0; }
+    #touchui .pedal { right: calc(18px + env(safe-area-inset-right)); bottom: calc(18px + env(safe-area-inset-bottom)); width: 96px; height: 96px; }
+    #touchui .brake { right: calc(126px + env(safe-area-inset-right)); bottom: calc(22px + env(safe-area-inset-bottom)); width: 70px; height: 70px; font-size: 11px; }
+    #touchui .cruiserow { right: calc(18px + env(safe-area-inset-right)); bottom: calc(132px + env(safe-area-inset-bottom)); display: flex; gap: 8px; align-items: center; }
+    #touchui .cruise { height: 46px; padding: 0 14px; flex-direction: column; gap: 1px; font-size: 10px; min-width: 92px; }
+    #touchui .cruise .spd { font-size: 14px; letter-spacing: 0; text-transform: none; }
+    #touchui .cruise.lit { background: rgba(233,185,73,0.45); border-color: rgba(255,226,150,0.9); }
+    #touchui .corner { top: calc(14px + env(safe-area-inset-top)); right: calc(14px + env(safe-area-inset-right)); display: flex; gap: 8px; }
+    #touchui .steer { left: calc(18px + env(safe-area-inset-left)); bottom: calc(26px + env(safe-area-inset-bottom)); width: 190px; height: 76px; }
+    #touchui .steer .track { position: absolute; left: 0; right: 0; top: 50%; height: 30px; margin-top: -15px; border-radius: 999px; background: rgba(16,22,18,0.32); border: 1.5px solid rgba(246,241,228,0.4); }
+    #touchui .steer .knob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 999px; background: rgba(246,241,228,0.28); border: 1.5px solid rgba(246,241,228,0.75); transition: transform 0.08s; }
+    body.touch #toast { bottom: calc(118px + env(safe-area-inset-bottom)); left: calc(20px + env(safe-area-inset-left)); }
+    body.touch #note { bottom: calc(118px + env(safe-area-inset-bottom)); }
+    @media (max-width: 600px) {
+      body.touch #note { top: calc(84px + env(safe-area-inset-top)); bottom: auto; }
+      body.touch #toast { bottom: calc(196px + env(safe-area-inset-bottom)); }
+    }
+    @media (max-width: 420px) {
+      #touchui .steer { width: 150px; }
+      #touchui .pedal { width: 84px; height: 84px; }
+      #touchui .brake { right: calc(112px + env(safe-area-inset-right)); width: 62px; height: 62px; }
+    }
   </style>
 </head>
 <body>
@@ -50,9 +86,13 @@
     <h1>Cross Seminole</h1>
     <div class="sub">Out of the driveway, past the cul-de-sac, and onto the trail.<br />Live oaks, boardwalks, lakes and little towns — for as long as you want to ride.</div>
     <div class="go">Building the neighborhood…</div>
-    <div class="keys">
+    <div class="keys desk-only">
       <kbd>W</kbd> pedal &nbsp; <kbd>S</kbd> brake &nbsp; <kbd>A</kbd><kbd>D</kbd> steer &nbsp; <kbd>Shift</kbd> push harder<br />
-      <kbd>C</kbd> cruise (rides the trail for you) &nbsp; <kbd>Space</kbd> bell &nbsp; mouse to look around &nbsp; <kbd>H</kbd> all keys
+      <kbd>C</kbd> cruise (rides the trail for you) &nbsp; <kbd>−</kbd><kbd>+</kbd> cruise speed &nbsp; <kbd>Space</kbd> bell &nbsp; mouse to look around &nbsp; <kbd>H</kbd> all keys
+    </div>
+    <div class="keys touch-only">
+      Hold <b>Pedal</b> to ride · slide the left control to steer · drag anywhere to look<br />
+      Tap <b>Cruise</b> and the bike rides the trail for you · <b>− / +</b> sets its speed
     </div>
     <div class="route">Route <span id="seed"></span> · <a href="?" id="newroute">new route</a></div>
   </div>
@@ -72,10 +112,11 @@
     <div class="keys">
       <kbd>W</kbd>/<kbd>↑</kbd> pedal &nbsp; <kbd>S</kbd>/<kbd>↓</kbd> brake &nbsp; <kbd>A</kbd><kbd>D</kbd>/<kbd>←</kbd><kbd>→</kbd> steer<br />
       <kbd>Shift</kbd> pedal harder &nbsp; <kbd>C</kbd> cruise — keeps a steady pace and follows the trail<br />
+      <kbd>−</kbd>/<kbd>+</kbd> or <kbd>[</kbd>/<kbd>]</kbd> cruise speed, 2 mph at a time, up to 30 mph<br />
       Mouse looks around (click to capture) &nbsp; <kbd>Space</kbd>/<kbd>B</kbd> ring the bell<br />
       <kbd>U</kbd> mph / km/h &nbsp; <kbd>T</kbd> skip ahead an hour &nbsp; <kbd>M</kbd> mute &nbsp; <kbd>F</kbd> fullscreen &nbsp; <kbd>Esc</kbd>/<kbd>P</kbd> pause<br />
-      Gamepad: RT pedal · LT brake · left stick steer · right stick look · X cruise · A bell<br />
-      Touch: hold to pedal, finger left/right to steer, two fingers to brake
+      Gamepad: RT pedal · LT brake · left stick steer · right stick look · X cruise · D-pad cruise speed · A bell<br />
+      Touch: hold Pedal, slide the steering control, drag anywhere to look, Cruise with − / + for speed
     </div>
     <div style="margin-top: 24px"><button id="helpclose">Back</button></div>
   </div>

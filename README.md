@@ -70,7 +70,8 @@ The route number is on the title screen and the pause screen.
 | **S** / **↓** | brake |
 | **A D** / **← →** | steer |
 | **Shift** | pedal harder |
-| **C** | cruise: holds an easy pace and follows the trail on its own, so you can just look around |
+| **C** | cruise: holds a set speed and follows the trail on its own, so you can just look around |
+| **−** / **+** (or **[** / **]**) | cruise speed, 2 mph at a time, from 4 up to 30 mph (starts at 14) |
 | **Mouse** | look around (click to capture the mouse; your head drifts back to center when you stop moving it) |
 | **Space** / **B** | ring the bell |
 | **U** | switch between mph and km/h |
@@ -80,8 +81,31 @@ The route number is on the title screen and the pause screen.
 | **Esc** / **P** | pause |
 
 On a gamepad: RT pedals, LT brakes, the left stick steers, the right stick looks
-around, X toggles cruise and A rings the bell. On a touchscreen: hold to pedal,
-move your finger left or right to steer, and use two fingers to brake.
+around, X toggles cruise, the D-pad sets cruise speed, and A rings the bell.
+
+The cruise speed is on the handlebar computer (`CRZ 14`) whenever cruise is on.
+
+### Phones and tablets
+
+The game plays on a touchscreen in either orientation. When you touch the
+screen, a few translucent controls appear:
+
+- **Steering slider** (bottom left): slide it sideways. It springs back to
+  center when you let go.
+- **Pedal** and **Brake** (bottom right): hold them.
+- **Cruise** with **−** / **+**: turns cruise on and off and sets its speed.
+- **Bell** and **pause** (top right).
+
+Drag anywhere else on the screen to look around. The controls fade back once
+you're just cruising.
+
+The easiest way to ride on a phone is to tap Cruise and look around. On phones
+the game also:
+
+- goes fullscreen when you start
+- pauses if you switch apps
+- widens the view in portrait so you still see the trail ahead
+- lowers resolution and shadow detail to keep the frame rate up
 
 ## Things you might notice
 

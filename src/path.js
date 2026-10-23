@@ -117,7 +117,7 @@ export class Path {
         this.board = { start: d, end: d + len, h: 0.72, ramp: 12, creek: false };
       } else if (creeky && region.end - d > 80 && rng.chance(type === 'foottrail' ? 0.012 : 0.004)) {
         const len = rng.range(type === 'railtrail' ? 24 : 10, type === 'railtrail' ? 44 : 22);
-        this.board = { start: d, end: d + len, h: type === 'railtrail' ? 0.9 : 0.45, ramp: type === 'railtrail' ? 2 : 3, creek: true };
+        this.board = { start: d, end: d + len, h: type === 'railtrail' ? 0.7 : 0.4, ramp: type === 'railtrail' ? 8 : 4, creek: true };
         this.straighten(d - 10, d + len + 10);
       }
     }
