@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Cross Seminole</title>
+  <meta name="description" content="A long, quiet first-person bike ride from an Orlando cul-de-sac out across central Florida." />
+  <style>
+    :root {
+      --ink: #f6f1e4;
+      --shade: rgba(16, 22, 18, 0.55);
+      --accent: #e9b949;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #0d120f; color: var(--ink); font-family: Georgia, 'Times New Roman', serif; }
+    canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
+    .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+    #title { background: linear-gradient(180deg, rgba(10,14,12,0.15) 0%, rgba(10,14,12,0.55) 70%, rgba(10,14,12,0.75) 100%); pointer-events: auto; cursor: pointer; transition: opacity 1.2s ease; flex-direction: column; text-align: center; padding: 16px; }
+    #title.hidden, #pause.hidden, #help.hidden { opacity: 0; pointer-events: none; }
+    #title h1 { font-weight: 400; font-size: clamp(38px, 7vw, 88px); letter-spacing: 0.04em; margin: 0 0 6px; text-shadow: 0 2px 24px rgba(0,0,0,0.5); }
+    #title .sub { font-style: italic; font-size: clamp(15px, 2vw, 20px); opacity: 0.9; margin-bottom: 38px; max-width: 34em; line-height: 1.5; }
+    #title .go { font-family: system-ui, sans-serif; font-size: 14px; letter-spacing: 0.25em; text-transform: uppercase; border: 1px solid rgba(246,241,228,0.6); padding: 14px 28px; border-radius: 999px; background: rgba(0,0,0,0.2); animation: breathe 3s ease-in-out infinite; }
+    #title .route { margin-top: 22px; font-family: system-ui, sans-serif; font-size: 12px; opacity: 0.7; letter-spacing: 0.08em; }
+    #title .route a { color: var(--ink); }
+    #title.loading .go { opacity: 0.4; animation: none; }
+    @keyframes breathe { 50% { background: rgba(255,255,255,0.12); } }
+    .keys { font-family: system-ui, sans-serif; font-size: 13px; line-height: 1.9; opacity: 0.85; margin-top: 30px; }
+    kbd { font-family: inherit; display: inline-block; min-width: 1.9em; padding: 0 6px; border: 1px solid rgba(246,241,228,0.5); border-radius: 5px; text-align: center; margin: 0 2px; font-size: 12px; }
+    #toast { position: fixed; left: 40px; bottom: 44px; pointer-events: none; opacity: 0; transition: opacity 2.2s ease; text-shadow: 0 1px 12px rgba(0,0,0,0.55), 0 0 2px rgba(0,0,0,0.4); max-width: calc(100vw - 32px); }
+    #toast.show { opacity: 1; }
+    #toast .name { font-size: clamp(26px, 4vw, 44px); letter-spacing: 0.02em; }
+    #toast .sub { font-style: italic; font-size: clamp(14px, 1.6vw, 18px); opacity: 0.85; margin-top: 2px; }
+    #note { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); font-family: system-ui, sans-serif; font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0; transition: opacity 0.6s; pointer-events: none; text-shadow: 0 1px 6px rgba(0,0,0,0.7); white-space: nowrap; }
+    #note.show { opacity: 0.85; }
+    #pause, #help { background: var(--shade); flex-direction: column; text-align: center; transition: opacity 0.4s; pointer-events: auto; padding: 16px; }
+    #pause h2, #help h2 { font-weight: 400; font-size: 34px; margin: 0 0 8px; }
+    #pause .stats { font-family: system-ui, sans-serif; font-size: 14px; opacity: 0.9; line-height: 1.8; margin: 10px 0 24px; }
+    #pause button, #help button { font-family: system-ui, sans-serif; font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink); background: rgba(0,0,0,0.25); border: 1px solid rgba(246,241,228,0.6); padding: 12px 24px; border-radius: 999px; cursor: pointer; margin: 6px; }
+    #pause button:hover, #help button:hover { background: rgba(255,255,255,0.12); }
+    @media (max-width: 600px) {
+      #toast { left: 16px; bottom: 24px; }
+      .keys { font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <div id="title" class="overlay loading">
+    <h1>Cross Seminole</h1>
+    <div class="sub">Out of the driveway, past the cul-de-sac, and onto the trail.<br />Live oaks, boardwalks, lakes and little towns — for as long as you want to ride.</div>
+    <div class="go">Building the neighborhood…</div>
+    <div class="keys">
+      <kbd>W</kbd> pedal &nbsp; <kbd>S</kbd> brake &nbsp; <kbd>A</kbd><kbd>D</kbd> steer &nbsp; <kbd>Shift</kbd> push harder<br />
+      <kbd>C</kbd> cruise (rides the trail for you) &nbsp; <kbd>Space</kbd> bell &nbsp; mouse to look around &nbsp; <kbd>H</kbd> all keys
+    </div>
+    <div class="route">Route <span id="seed"></span> · <a href="?" id="newroute">new route</a></div>
+  </div>
+
+  <div id="pause" class="overlay hidden">
+    <h2>Taking a breather</h2>
+    <div class="stats" id="stats"></div>
+    <div>
+      <button id="resume">Keep riding</button>
+      <button id="keysbtn">Keys</button>
+      <button id="restart">New route</button>
+    </div>
+  </div>
+
+  <div id="help" class="overlay hidden">
+    <h2>Keys</h2>
+    <div class="keys">
+      <kbd>W</kbd>/<kbd>↑</kbd> pedal &nbsp; <kbd>S</kbd>/<kbd>↓</kbd> brake &nbsp; <kbd>A</kbd><kbd>D</kbd>/<kbd>←</kbd><kbd>→</kbd> steer<br />
+      <kbd>Shift</kbd> pedal harder &nbsp; <kbd>C</kbd> cruise — keeps a steady pace and follows the trail<br />
+      Mouse looks around (click to capture) &nbsp; <kbd>Space</kbd>/<kbd>B</kbd> ring the bell<br />
+      <kbd>U</kbd> mph / km/h &nbsp; <kbd>T</kbd> skip ahead an hour &nbsp; <kbd>M</kbd> mute &nbsp; <kbd>F</kbd> fullscreen &nbsp; <kbd>Esc</kbd>/<kbd>P</kbd> pause<br />
+      Gamepad: RT pedal · LT brake · left stick steer · right stick look · X cruise · A bell<br />
+      Touch: hold to pedal, finger left/right to steer, two fingers to brake
+    </div>
+    <div style="margin-top: 24px"><button id="helpclose">Back</button></div>
+  </div>
+
+  <div id="toast"><div class="name"></div><div class="sub"></div></div>
+  <div id="note"></div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
